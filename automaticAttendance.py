@@ -76,6 +76,10 @@ def subjectChoose():
                 text_to_speech("No se pudo abrir la camara.")
                 return
 
+            # ===== CONFIGURAR RESOLUCION DE CAMARA =====
+            cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)   # Ancho
+            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)   # Alto
+
             interfaz = InterfazAsistenciaEPP()
             start_time = time.time()
             capture_duration = 10
@@ -89,7 +93,14 @@ def subjectChoose():
             print(f"Duracion: {capture_duration} segundos")
             print(f"Detector EPP: ACTIVO (Color + Forma)")
             print(f"Interfaz Visual: ACTIVA")
+            print(f"Resolucion: 1280x720")
             print("="*60 + "\n")
+
+            # ===== CREAR VENTANA EN MODO FULLSCREEN (OPCIONAL) =====
+            window_name = "Sistema de Asistencia con EPP"
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # Ventana redimensionable
+            cv2.resizeWindow(window_name, 1280, 720)         # Tamaño inicial grande
+            # cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)  # Descomenta para pantalla completa
 
             while True:
                 ret, frame = cam.read()
@@ -161,7 +172,7 @@ def subjectChoose():
                     tiempo_restante=tiempo_restante
                 )
 
-                cv2.imshow("Sistema de Asistencia con EPP", frame)
+                cv2.imshow(window_name, frame)
 
                 if time.time() - start_time > capture_duration:
                     break
