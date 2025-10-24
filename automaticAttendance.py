@@ -39,9 +39,9 @@ def open_file(filepath):
 
 def subjectChoose():
     def FillAttendance():
-        sub = tx.get().strip()
-        if sub == "":
-            text_to_speech("Ingrese el nombre del proyecto.")
+        trabajador_buscado = tx.get().strip()
+        if trabajador_buscado == "":
+            text_to_speech("Ingrese el nombre del trabajador.")
             return
 
         if not os.path.exists(trainimagelabel_path):
@@ -60,11 +60,20 @@ def subjectChoose():
             df_students = pd.read_csv(studentdetail_path, dtype=str)
             df_students["Enrollment"] = df_students["Enrollment"].astype(str)
 
+            # ===== VALIDAR QUE EL TRABAJADOR EXISTE =====
+            trabajador_existe = df_students['Name'].str.lower().str.contains(trabajador_buscado.lower()).any()
+            if not trabajador_existe:
+                msg = f"Trabajador '{trabajador_buscado}' no encontrado en la base de datos."
+                text_to_speech(msg)
+                print(f"\n❌ {msg}")
+                print("\nTrabajadores registrados:")
+                for idx, row in df_students.iterrows():
+                    print(f"  - {row['Name']} (ID: {row['Enrollment']})")
+                return
+
             os.makedirs(attendance_base, exist_ok=True)
-            sub_folder = os.path.join(attendance_base, sub)
-            os.makedirs(sub_folder, exist_ok=True)
             today = datetime.datetime.now().strftime("%Y-%m-%d")
-            today_file = os.path.join(sub_folder, f"{sub}_{today}.csv")
+            today_file = os.path.join(attendance_base, f"asistencia_{today}.csv")
 
             if os.path.exists(today_file):
                 prev_attendance = pd.read_csv(today_file, dtype=str)
@@ -76,31 +85,28 @@ def subjectChoose():
                 text_to_speech("No se pudo abrir la camara.")
                 return
 
-            # ===== CONFIGURAR RESOLUCION DE CAMARA =====
-            cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)   # Ancho
-            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)   # Alto
+            cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
             interfaz = InterfazAsistenciaEPP()
             start_time = time.time()
             capture_duration = 10
-            font = cv2.FONT_HERSHEY_SIMPLEX
             new_rows = []
 
             print("\n" + "="*60)
             print("INICIANDO CAPTURA DE ASISTENCIA")
             print("="*60)
-            print(f"Proyecto: {sub}")
+            print(f"Trabajador buscado: {trabajador_buscado}")
             print(f"Duracion: {capture_duration} segundos")
             print(f"Detector EPP: ACTIVO (Color + Forma)")
-            print(f"Interfaz Visual: ACTIVA")
-            print(f"Resolucion: 1280x720")
+            print(f"Solo se registrara: {trabajador_buscado}")
             print("="*60 + "\n")
 
-            # ===== CREAR VENTANA EN MODO FULLSCREEN (OPCIONAL) =====
             window_name = "Sistema de Asistencia con EPP"
-            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # Ventana redimensionable
-            cv2.resizeWindow(window_name, 1280, 720)         # Tamaño inicial grande
-            # cv2.setWindowProperty(window_name, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)  # Descomenta para pantalla completa
+            cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(window_name, 1280, 720)
+
+            trabajador_registrado = False
 
             while True:
                 ret, frame = cam.read()
@@ -122,6 +128,19 @@ def subjectChoose():
                         if not match.empty:
                             name = match.values[0]
 
+                            # ===== FILTRO: SOLO PROCESAR SI ES EL TRABAJADOR BUSCADO =====
+                            if trabajador_buscado.lower() not in name.lower():
+                                # Mostrar que se detectó otro trabajador pero no se registra
+                                info_trabajador = {
+                                    'nombre': f"{name} (NO ES {trabajador_buscado})",
+                                    'id': Id_str,
+                                    'tiene_rostro': True,
+                                    'bbox_rostro': (x, y, w, h)
+                                }
+                                print(f"⚠️  Detectado: {name} - NO es el trabajador buscado")
+                                continue  # Saltar al siguiente rostro
+
+                            # Es el trabajador correcto
                             info_trabajador = {
                                 'nombre': name,
                                 'id': Id_str,
@@ -129,6 +148,7 @@ def subjectChoose():
                                 'bbox_rostro': (x, y, w, h)
                             }
 
+                            # Verificar EPP
                             epp_results = verify_epp(frame)
                             tiene_casco = any('casco' in str(r[0]).lower() for r in epp_results)
                             tiene_chaleco = any('chaleco' in str(r[0]).lower() for r in epp_results)
@@ -162,8 +182,11 @@ def subjectChoose():
                                             "Status": status
                                         }
                                         new_rows.append(row)
-                                        print(f"OK {name} - {status} - {timeStamp}")
-                                        text_to_speech(f"{name} registrado")
+                                        print(f"✅ {name} - {status} - {timeStamp}")
+                                        text_to_speech(f"{name} {status} registrada")
+                                        trabajador_registrado = True
+                            else:
+                                print(f"⚠️  {name} detectado pero sin EPP completo")
 
                 frame = interfaz.dibujar_interfaz_completa(
                     frame, 
@@ -191,17 +214,24 @@ def subjectChoose():
             appended.to_csv(today_file, index=False)
 
             print("\n" + "="*60)
-            print(f"ASISTENCIA GUARDADA")
-            print(f"Registros nuevos: {len(new_rows)}")
+            if trabajador_registrado:
+                print(f"✅ ASISTENCIA REGISTRADA")
+                print(f"Trabajador: {trabajador_buscado}")
+                print(f"Registros: {len(new_rows)}")
+            else:
+                print(f"⚠️  NO SE REGISTRO ASISTENCIA")
+                print(f"Trabajador '{trabajador_buscado}' no detectado o sin EPP")
             print(f"Archivo: {today_file}")
             print("="*60 + "\n")
 
-            msg = f"Asistencia guardada: {len(new_rows)} registros"
-            Notifica.configure(text=msg, bg="black", fg="yellow", width=50, 
-                             relief=tk.RIDGE, bd=5, font=("times", 15, "bold"))
+            msg = f"Asistencia: {len(new_rows)} registros para {trabajador_buscado}"
+            Notifica.configure(text=msg, bg="black", fg="yellow" if trabajador_registrado else "red", 
+                             width=50, relief=tk.RIDGE, bd=5, font=("times", 15, "bold"))
             Notifica.place(x=20, y=250)
             text_to_speech(msg)
-            open_file(today_file)
+            
+            if trabajador_registrado:
+                open_file(today_file)
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
@@ -221,7 +251,7 @@ def subjectChoose():
     subject.resizable(0, 0)
     subject.configure(background="black")
 
-    titl = tk.Label(subject, text="Ingrese el nombre del proyecto", bg="black", 
+    titl = tk.Label(subject, text="Registrar asistencia individual", bg="black", 
                    fg="green", font=("arial", 25))
     titl.pack(pady=20)
 
@@ -229,7 +259,7 @@ def subjectChoose():
                        font=("times", 15, "bold"))
     Notifica.pack()
 
-    sub_label = tk.Label(subject, text="Proyecto:", bg="black", fg="yellow", 
+    sub_label = tk.Label(subject, text="Nombre del trabajador:", bg="black", fg="yellow", 
                         font=("times new roman", 15))
     sub_label.place(x=60, y=120)
 

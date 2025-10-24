@@ -1,6 +1,6 @@
 """
-Módulo de Detección de EPP Integrado
-Detector por COLOR + FORMA para sistema de asistencia
+Módulo de Detección de EPP - VERSION DE PRUEBA
+Detecta: CABELLO NEGRO + CAMISA BEIGE
 """
 
 import cv2
@@ -8,28 +8,34 @@ import numpy as np
 
 
 class EPPDetectorIntegrado:
-    """Detector de EPP por color y forma"""
+    """Detector de EPP por color y forma - VERSION PRUEBA"""
     
     def __init__(self):
         """Inicializa el detector"""
-        # CASCO BLANCO
+        # CABELLO NEGRO (en lugar de casco blanco)
+        # Negro en HSV tiene V (luminosidad) muy baja
         self.casco_ranges = [
-            {'lower': np.array([0, 0, 180]), 'upper': np.array([180, 50, 255])}
+            {'lower': np.array([0, 0, 0]), 'upper': np.array([180, 255, 50])}
         ]
-        # CHALECO AZUL
+        
+        # CAMISA BEIGE/CREMA (en lugar de chaleco azul)
+        # Beige está en el rango amarillo-naranja con saturación baja
         self.chaleco_ranges = [
-            {'lower': np.array([90, 50, 50]), 'upper': np.array([110, 255, 255])},
-            {'lower': np.array([85, 30, 100]), 'upper': np.array([95, 200, 255])}
+            {'lower': np.array([10, 20, 100]), 'upper': np.array([30, 150, 255])},
+            {'lower': np.array([15, 10, 120]), 'upper': np.array([25, 100, 240])}
         ]
-        self.threshold_casco = 3000
-        self.threshold_chaleco = 5000
-        self.min_circularidad_casco = 0.5
-        self.min_aspect_ratio_chaleco = 0.8
-        self.max_aspect_ratio_chaleco = 2.5
+        
+        # Umbrales más sensibles para pruebas
+        self.threshold_casco = 1500      # Más bajo para cabello
+        self.threshold_chaleco = 3000    # Más bajo para camisa
+        
+        self.min_circularidad_casco = 0.3   # Menos exigente
+        self.min_aspect_ratio_chaleco = 0.5
+        self.max_aspect_ratio_chaleco = 3.0
         self.detecciones_count = 0
     
     def detectar_casco(self, frame):
-        """Detecta casco BLANCO con forma CIRCULAR"""
+        """Detecta CABELLO NEGRO con forma CIRCULAR"""
         h, w = frame.shape[:2]
         zona_superior = frame[0:h//3, :]
         hsv = cv2.cvtColor(zona_superior, cv2.COLOR_BGR2HSV)
@@ -69,7 +75,7 @@ class EPPDetectorIntegrado:
         return tiene_casco, min(100, confianza)
     
     def detectar_chaleco(self, frame):
-        """Detecta chaleco AZUL con forma RECTANGULAR"""
+        """Detecta CAMISA BEIGE con forma RECTANGULAR"""
         h, w = frame.shape[:2]
         zona_media = frame[h//3:2*h//3, :]
         hsv = cv2.cvtColor(zona_media, cv2.COLOR_BGR2HSV)
@@ -120,7 +126,7 @@ class EPPDetectorIntegrado:
             resultados.append(('chaleco', conf_chaleco/100, (w//2-80, h//3, w//2+80, 2*h//3)))
         
         if self.detecciones_count % 30 == 0:
-            print(f"[EPP] Casco: {tiene_casco} ({conf_casco:.1f}%) | Chaleco: {tiene_chaleco} ({conf_chaleco:.1f}%)")
+            print(f"[EPP] Cabello: {tiene_casco} ({conf_casco:.1f}%) | Camisa: {tiene_chaleco} ({conf_chaleco:.1f}%)")
         return resultados
     
     def dibujar_resultados(self, frame, resultados):
@@ -131,7 +137,7 @@ class EPPDetectorIntegrado:
             texto = f"{clase}: {score*100:.1f}%"
             cv2.putText(frame, texto, (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         tiene_todos = len(resultados) >= 2
-        estado = "EPP COMPLETO" if tiene_todos else "EPP INCOMPLETO"
+        estado = "EPP COMPLETO (PRUEBA)" if tiene_todos else "EPP INCOMPLETO"
         color_estado = (0, 255, 0) if tiene_todos else (0, 0, 255)
         cv2.putText(frame, estado, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, color_estado, 2)
         return frame
@@ -158,20 +164,32 @@ def draw_results(frame, results):
 
 
 if __name__ == "__main__":
-    print("TEST - DETECTOR EPP")
+    print("="*60)
+    print("TEST - DETECTOR EPP (MODO PRUEBA)")
+    print("="*60)
+    print("Detectando:")
+    print("  - Cabello NEGRO (como casco)")
+    print("  - Camisa BEIGE (como chaleco)")
+    print("\nControles:")
+    print("  Q - Salir")
+    print("="*60)
+    
     detector = EPPDetectorIntegrado()
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         print("Error: camara")
         exit()
+    
     while True:
         ret, frame = cap.read()
         if not ret:
             break
         resultados = detector.verificar_epp(frame)
         frame = detector.dibujar_resultados(frame, resultados)
-        cv2.imshow('Test EPP', frame)
+        cv2.imshow('Test EPP - Modo Prueba', frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+    
     cap.release()
     cv2.destroyAllWindows()
+    print("\nTest finalizado")
