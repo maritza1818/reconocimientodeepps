@@ -1,4 +1,5 @@
-from epp_detector_integrado import verify_epp, draw_results  # ← NUEVO DETECTOR
+from epp_detector_integrado import verify_epp, draw_results
+from interfaz_asistencia_epp import InterfazAsistenciaEPP  # ← NUEVA INTERFAZ
 import tkinter as tk
 import os, cv2
 import pandas as pd
@@ -75,8 +76,11 @@ def subjectChoose():
                 text_to_speech("No se pudo abrir la cámara.")
                 return
 
+            # ===== INICIALIZAR INTERFAZ VISUAL =====
+            interfaz = InterfazAsistenciaEPP()
+            
             start_time = time.time()
-            capture_duration = 7  # segundos
+            capture_duration = 10  # Aumentado a 10 segundos para mejor visualización
             font = cv2.FONT_HERSHEY_SIMPLEX
             new_rows = []
 
@@ -86,12 +90,20 @@ def subjectChoose():
             print(f"Proyecto: {sub}")
             print(f"Duración: {capture_duration} segundos")
             print(f"Detector EPP: ACTIVO (Color + Forma)")
+            print(f"Interfaz Visual: ACTIVA")
             print("="*60 + "\n")
 
             while True:
-                ret, frame = cam.read()
+                ret, frame = cap.read()
                 if not ret:
                     break
+
+                # Tiempo restante
+                tiempo_restante = int(capture_duration - (time.time() - start_time))
+                
+                # Variables para la interfaz
+                info_trabajador = None
+                epp_results = []
 
                 # --- Detección de rostros ---
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -105,76 +117,66 @@ def subjectChoose():
                         if not match.empty:
                             name = match.values[0]
 
-                            # --- 🎯 VERIFICACIÓN DE EPP (NUEVO DETECTOR) ---
-                            epp_results = verify_epp(frame)  # Usa detector por color+forma
-                            frame = draw_results(frame, epp_results)
+                            # Preparar info del trabajador para interfaz
+                            info_trabajador = {
+                                'nombre': name,
+                                'id': Id_str,
+                                'tiene_rostro': True,
+                                'bbox_rostro': (x, y, w, h)
+                            }
+
+                            # --- VERIFICACIÓN DE EPP ---
+                            epp_results = verify_epp(frame)
                             
-                            # Tiene EPP si detecta AMBOS: casco Y chaleco
+                            # Verificar componentes
                             tiene_casco = any('casco' in str(r[0]).lower() for r in epp_results)
                             tiene_chaleco = any('chaleco' in str(r[0]).lower() for r in epp_results)
                             has_epp = tiene_casco and tiene_chaleco
 
                             if not has_epp:
-                                # Mostrar qué falta
-                                faltantes = []
-                                if not tiene_casco:
-                                    faltantes.append("Casco")
-                                if not tiene_chaleco:
-                                    faltantes.append("Chaleco")
-                                
-                                mensaje = f"{name}: Sin EPP ({', '.join(faltantes)})"
-                                cv2.putText(frame, mensaje, (x, y-10), font, 0.6, (0, 0, 255), 2)
-                                cv2.rectangle(frame, (x, y), (x+w, y+h), (0,0,255), 3)
-                                continue  # ❌ No registra sin EPP
-
-                            # --- ✅ Si tiene EPP completo, registrar asistencia ---
-                            timeStamp = datetime.datetime.now().strftime("%H:%M:%S")
-                            today = datetime.datetime.now().strftime("%Y-%m-%d")
-                            records_today = prev_attendance.loc[prev_attendance["Enrollment"] == Id_str]
-                            records_today = pd.concat([records_today, pd.DataFrame(new_rows)], ignore_index=True) if len(new_rows) else records_today
-
-                            # Determinar si es Entrada o Salida
-                            if records_today.empty:
-                                status = "Entrada"
-                            elif len(records_today) == 1 and records_today.iloc[0]["Status"] == "Entrada":
-                                status = "Salida"
+                                # No registra pero muestra en interfaz
+                                pass
                             else:
-                                status = None
+                                # --- ✅ Registrar asistencia ---
+                                timeStamp = datetime.datetime.now().strftime("%H:%M:%S")
+                                today = datetime.datetime.now().strftime("%Y-%m-%d")
+                                records_today = prev_attendance.loc[prev_attendance["Enrollment"] == Id_str]
+                                records_today = pd.concat([records_today, pd.DataFrame(new_rows)], ignore_index=True) if len(new_rows) else records_today
 
-                            # Registrar si es nuevo
-                            if status:
-                                # Verificar que no esté ya en new_rows
-                                already_in_new = any(
-                                    r["Enrollment"] == Id_str and r["Status"] == status
-                                    for r in new_rows
-                                )
-                                
-                                if not already_in_new:
-                                    row = {
-                                        "Enrollment": Id_str, 
-                                        "Name": name, 
-                                        "Date": today, 
-                                        "Time": timeStamp, 
-                                        "Status": status
-                                    }
-                                    new_rows.append(row)
-                                    print(f"✅ {name} - {status} - {timeStamp}")
+                                if records_today.empty:
+                                    status = "Entrada"
+                                elif len(records_today) == 1 and records_today.iloc[0]["Status"] == "Entrada":
+                                    status = "Salida"
+                                else:
+                                    status = None
+
+                                if status:
+                                    already_in_new = any(
+                                        r["Enrollment"] == Id_str and r["Status"] == status
+                                        for r in new_rows
+                                    )
                                     
-                                cv2.putText(frame, f"{name} - {status} OK", (x, y-10), font, 0.7, (0, 255, 0), 2)
-                                cv2.rectangle(frame, (x, y), (x+w, y+h), (0,255,0), 3)
-                        else:
-                            cv2.putText(frame, "Desconocido", (x, y-10), font, 0.6, (0,0,255), 2)
-                            cv2.rectangle(frame, (x, y), (x+w, y+h), (0,0,255), 3)
-                    else:
-                        cv2.putText(frame, "Desconocido", (x, y-10), font, 0.6, (0,0,255), 2)
-                        cv2.rectangle(frame, (x, y), (x+w, y+h), (0,0,255), 3)
+                                    if not already_in_new:
+                                        row = {
+                                            "Enrollment": Id_str, 
+                                            "Name": name, 
+                                            "Date": today, 
+                                            "Time": timeStamp, 
+                                            "Status": status
+                                        }
+                                        new_rows.append(row)
+                                        print(f"✅ {name} - {status} - {timeStamp}")
+                                        text_to_speech(f"{name} registrado")
 
-                # Mostrar tiempo restante
-                tiempo_restante = int(capture_duration - (time.time() - start_time))
-                cv2.putText(frame, f"Tiempo: {tiempo_restante}s", (10, 60), 
-                           font, 1, (255, 255, 0), 2)
+                # ===== DIBUJAR INTERFAZ VISUAL =====
+                frame = interfaz.dibujar_interfaz_completa(
+                    frame, 
+                    info_trabajador,
+                    epp_results,
+                    tiempo_restante=tiempo_restante
+                )
 
-                cv2.imshow("Registro de Asistencia con EPP", frame)
+                cv2.imshow("Sistema de Asistencia con EPP", frame)
 
                 if time.time() - start_time > capture_duration:
                     break
