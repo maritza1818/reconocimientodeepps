@@ -10,7 +10,23 @@ import datetime
 import time
 import tkinter.ttk as tkk
 import tkinter.font as font
+import subprocess
 
+# =======================
+# 🔹 CONFIGURACIÓN BASE
+# =======================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Carpeta donde se guardarán las asistencias manuales
+attendance_manual_dir = os.path.join(BASE_DIR, "Attendance(Manually)")
+os.makedirs(attendance_manual_dir, exist_ok=True)
+
+# Ruta del ícono
+icon_path = os.path.join(BASE_DIR, "AMS.ico")
+
+# =======================
+# 🔹 VARIABLES DE TIEMPO
+# =======================
 ts = time.time()
 Date = datetime.datetime.fromtimestamp(ts).strftime("%Y_%m_%d")
 timeStamp = datetime.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
@@ -18,15 +34,21 @@ Time = datetime.datetime.fromtimestamp(ts).strftime("%H:%M:%S")
 Hour, Minute, Second = timeStamp.split(":")
 d = {}
 index = 0
-####GUI for manually fill attendance
+
+# =========================================================
+# 🔹 FUNCIÓN PRINCIPAL: MANUALMENTE LLENAR ASISTENCIA
+# =========================================================
 def manually_fill():
     global sb
     sb = tk.Tk()
-    sb.iconbitmap("AMS.ico")
+    sb.iconbitmap(icon_path)
     sb.title("Enter subject name...")
     sb.geometry("580x320")
     sb.configure(background="snow")
 
+    # --------------------------
+    # ⚠️ Pantalla de error (sin materia)
+    # --------------------------
     def err_screen_for_subject():
         def ec_delete():
             ec.destroy()
@@ -34,7 +56,7 @@ def manually_fill():
         global ec
         ec = tk.Tk()
         ec.geometry("300x100")
-        ec.iconbitmap("AMS.ico")
+        ec.iconbitmap(icon_path)
         ec.title("Warning!!")
         ec.configure(background="snow")
         tk.Label(
@@ -56,9 +78,10 @@ def manually_fill():
             font=("times", 15, " bold "),
         ).place(x=90, y=50)
 
+    # --------------------------
+    # 🧾 Llenar asistencia
+    # --------------------------
     def fill_attendance():
-
-        ##Create table for Attendance
         global subb
         subb = SUB_ENTRY.get()
 
@@ -67,11 +90,12 @@ def manually_fill():
         else:
             sb.destroy()
             MFW = tk.Tk()
-            MFW.iconbitmap("AMS.ico")
-            MFW.title("Manually attendance of " + str(subb))
+            MFW.iconbitmap(icon_path)
+            MFW.title(f"Manual Attendance for {subb}")
             MFW.geometry("880x470")
             MFW.configure(background="snow")
 
+            # ⚠️ Error si falta dato
             def del_errsc2():
                 errsc2.destroy()
 
@@ -79,7 +103,7 @@ def manually_fill():
                 global errsc2
                 errsc2 = tk.Tk()
                 errsc2.geometry("330x100")
-                errsc2.iconbitmap("AMS.ico")
+                errsc2.iconbitmap(icon_path)
                 errsc2.title("Warning!!")
                 errsc2.configure(background="snow")
                 tk.Label(
@@ -101,12 +125,14 @@ def manually_fill():
                     font=("times", 15, " bold "),
                 ).place(x=90, y=50)
 
+            # Validación de entrada (solo números)
             def testVal(inStr, acttyp):
                 if acttyp == "1":  # insert
                     if not inStr.isdigit():
                         return False
                 return True
 
+            # Etiquetas
             ENR = tk.Label(
                 MFW,
                 text="Enter Enrollment",
@@ -129,6 +155,7 @@ def manually_fill():
             )
             STU_NAME.place(x=30, y=200)
 
+            # Entradas
             global ENR_ENTRY
             ENR_ENTRY = tk.Entry(
                 MFW,
@@ -152,49 +179,28 @@ def manually_fill():
             def remove_student():
                 STUDENT_ENTRY.delete(first=0, last=22)
 
-            ####get important variable
-
+            # Guardar en diccionario temporal
             def enter_data_DB():
-                global index
-                global d
+                global index, d
                 ENROLLMENT = ENR_ENTRY.get()
                 STUDENT = STUDENT_ENTRY.get()
-                if ENROLLMENT == "":
-                    err_screen1()
-                elif STUDENT == "":
+                if ENROLLMENT == "" or STUDENT == "":
                     err_screen1()
                 else:
-                    if index == 0:
-                        d = {
-                            index: {"Enrollment": ENROLLMENT, "Name": STUDENT, Date: 1}
-                        }
-                        index += 1
-                        ENR_ENTRY.delete(0, "end")
-                        STUDENT_ENTRY.delete(0, "end")
-                    else:
-                        d[index] = {"Enrollment": ENROLLMENT, "Name": STUDENT, Date: 1}
-                        index += 1
-                        ENR_ENTRY.delete(0, "end")
-                        STUDENT_ENTRY.delete(0, "end")
-                    # TODO implement CSV code
+                    d[index] = {"Enrollment": ENROLLMENT, "Name": STUDENT, Date: 1}
+                    index += 1
+                    ENR_ENTRY.delete(0, "end")
+                    STUDENT_ENTRY.delete(0, "end")
                 print(d)
 
+            # Crear archivo CSV final
             def create_csv():
-                df = pd.DataFrame(d)
-                csv_name = (
-                    "Attendance(Manually)/"
-                    + subb
-                    + "_"
-                    + Date
-                    + "_"
-                    + Hour
-                    + "-"
-                    + Minute
-                    + "-"
-                    + Second
-                    + ".csv"
+                df = pd.DataFrame(d).T  # 🔹 Transponer para formato correcto
+                csv_name = os.path.join(
+                    attendance_manual_dir,
+                    f"{subb}_{Date}_{Hour}-{Minute}-{Second}.csv",
                 )
-                df.to_csv(csv_name)
+                df.to_csv(csv_name, index=False)
                 O = "CSV created Successfully"
                 Notifi.configure(
                     text=O,
@@ -204,35 +210,8 @@ def manually_fill():
                     font=("times", 19, "bold"),
                 )
                 Notifi.place(x=180, y=380)
-                """import csv
-                import tkinter
 
-                root = tkinter.Tk()
-                root.title("Attendance of " + subb)
-                root.configure(background="snow")
-                with open(csv_name, newline="") as file:
-                    reader = csv.reader(file)
-                    r = 0
-
-                    for col in reader:
-                        c = 0
-                        for row in col:
-                            # i've added some styling
-                            label = tkinter.Label(
-                                root,
-                                width=13,
-                                height=1,
-                                fg="black",
-                                font=("times", 13, " bold "),
-                                bg="lawn green",
-                                text=row,
-                                relief=tkinter.RIDGE,
-                            )
-                            label.grid(row=r, column=c)
-                            c += 1
-                        r += 1
-                root.mainloop()"""
-
+            # Notificación
             Notifi = tk.Label(
                 MFW,
                 text="CSV created Successfully",
@@ -243,6 +222,7 @@ def manually_fill():
                 font=("times", 19, "bold"),
             )
 
+            # Botones
             c1ear_enroll = tk.Button(
                 MFW,
                 text="Clear",
@@ -294,18 +274,14 @@ def manually_fill():
                 font=("times", 15, " bold "),
             )
             MAKE_CSV.place(x=570, y=300)
-            # TODO remove check sheet
-            def attf():
-                import subprocess
 
-                subprocess.Popen(
-                    r'explorer /select,"C:/Users/patel/OneDrive/Documents/E/FBAS/Attendance(Manually)"'
-                )
+            def open_attendance_folder():
+                subprocess.Popen(f'explorer "{attendance_manual_dir}"')
 
             attf = tk.Button(
                 MFW,
                 text="Check Sheets",
-                command=attf,
+                command=open_attendance_folder,
                 fg="black",
                 bg="lawn green",
                 width=12,
@@ -317,6 +293,7 @@ def manually_fill():
 
             MFW.mainloop()
 
+    # Pantalla principal
     SUB = tk.Label(
         sb,
         text="Enter Subject",
@@ -329,7 +306,6 @@ def manually_fill():
     SUB.place(x=30, y=100)
 
     global SUB_ENTRY
-
     SUB_ENTRY = tk.Entry(
         sb, width=20, bg="yellow", fg="red", font=("times", 23, " bold ")
     )
@@ -348,3 +324,8 @@ def manually_fill():
     )
     fill_manual_attendance.place(x=250, y=160)
     sb.mainloop()
+
+
+# 🔹 Para probar el módulo directamente
+if __name__ == "__main__":
+    manually_fill()
