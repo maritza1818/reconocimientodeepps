@@ -1,5 +1,5 @@
 from epp_detector_integrado import verify_epp, draw_results
-from interfaz_asistencia_epp import InterfazAsistenciaEPP  # ← NUEVA INTERFAZ
+from interfaz_asistencia_epp import InterfazAsistenciaEPP
 import tkinter as tk
 import os, cv2
 import pandas as pd
@@ -15,7 +15,7 @@ studentdetail_path = os.path.join(BASE_DIR, "StudentDetails", "studentdetails.cs
 attendance_base = os.path.join(BASE_DIR, "Attendance")
 
 def text_to_speech(message):
-    """Función de texto a voz simple"""
+    """Funcion de texto a voz simple"""
     print(f"[TTS] {message}")
     try:
         if platform.system() == "Linux":
@@ -73,39 +73,33 @@ def subjectChoose():
 
             cam = cv2.VideoCapture(0)
             if not cam.isOpened():
-                text_to_speech("No se pudo abrir la cámara.")
+                text_to_speech("No se pudo abrir la camara.")
                 return
 
-            # ===== INICIALIZAR INTERFAZ VISUAL =====
             interfaz = InterfazAsistenciaEPP()
-            
             start_time = time.time()
-            capture_duration = 10  # Aumentado a 10 segundos para mejor visualización
+            capture_duration = 10
             font = cv2.FONT_HERSHEY_SIMPLEX
             new_rows = []
 
             print("\n" + "="*60)
-            print("🎥 INICIANDO CAPTURA DE ASISTENCIA")
+            print("INICIANDO CAPTURA DE ASISTENCIA")
             print("="*60)
             print(f"Proyecto: {sub}")
-            print(f"Duración: {capture_duration} segundos")
+            print(f"Duracion: {capture_duration} segundos")
             print(f"Detector EPP: ACTIVO (Color + Forma)")
             print(f"Interfaz Visual: ACTIVA")
             print("="*60 + "\n")
 
             while True:
-                ret, frame = cap.read()
+                ret, frame = cam.read()
                 if not ret:
                     break
 
-                # Tiempo restante
                 tiempo_restante = int(capture_duration - (time.time() - start_time))
-                
-                # Variables para la interfaz
                 info_trabajador = None
                 epp_results = []
 
-                # --- Detección de rostros ---
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 faces = face_cascade.detectMultiScale(gray, 1.2, 5)
 
@@ -117,7 +111,6 @@ def subjectChoose():
                         if not match.empty:
                             name = match.values[0]
 
-                            # Preparar info del trabajador para interfaz
                             info_trabajador = {
                                 'nombre': name,
                                 'id': Id_str,
@@ -125,19 +118,12 @@ def subjectChoose():
                                 'bbox_rostro': (x, y, w, h)
                             }
 
-                            # --- VERIFICACIÓN DE EPP ---
                             epp_results = verify_epp(frame)
-                            
-                            # Verificar componentes
                             tiene_casco = any('casco' in str(r[0]).lower() for r in epp_results)
                             tiene_chaleco = any('chaleco' in str(r[0]).lower() for r in epp_results)
                             has_epp = tiene_casco and tiene_chaleco
 
-                            if not has_epp:
-                                # No registra pero muestra en interfaz
-                                pass
-                            else:
-                                # --- ✅ Registrar asistencia ---
+                            if has_epp:
                                 timeStamp = datetime.datetime.now().strftime("%H:%M:%S")
                                 today = datetime.datetime.now().strftime("%Y-%m-%d")
                                 records_today = prev_attendance.loc[prev_attendance["Enrollment"] == Id_str]
@@ -165,10 +151,9 @@ def subjectChoose():
                                             "Status": status
                                         }
                                         new_rows.append(row)
-                                        print(f"✅ {name} - {status} - {timeStamp}")
+                                        print(f"OK {name} - {status} - {timeStamp}")
                                         text_to_speech(f"{name} registrado")
 
-                # ===== DIBUJAR INTERFAZ VISUAL =====
                 frame = interfaz.dibujar_interfaz_completa(
                     frame, 
                     info_trabajador,
@@ -186,7 +171,6 @@ def subjectChoose():
             cam.release()
             cv2.destroyAllWindows()
 
-            # Guardar registros
             if len(new_rows):
                 appended = pd.concat([prev_attendance, pd.DataFrame(new_rows)], ignore_index=True)
             else:
@@ -196,7 +180,7 @@ def subjectChoose():
             appended.to_csv(today_file, index=False)
 
             print("\n" + "="*60)
-            print(f"✅ ASISTENCIA GUARDADA")
+            print(f"ASISTENCIA GUARDADA")
             print(f"Registros nuevos: {len(new_rows)}")
             print(f"Archivo: {today_file}")
             print("="*60 + "\n")
@@ -206,24 +190,20 @@ def subjectChoose():
                              relief=tk.RIDGE, bd=5, font=("times", 15, "bold"))
             Notifica.place(x=20, y=250)
             text_to_speech(msg)
-            
             open_file(today_file)
 
         except Exception as e:
             error_msg = f"Error: {str(e)}"
             text_to_speech(error_msg)
-            print(f"❌ {error_msg}")
-            
+            print(f"ERROR: {error_msg}")
             import traceback
             traceback.print_exc()
-            
             try:
                 cam.release()
                 cv2.destroyAllWindows()
             except:
                 pass
 
-    # --- Ventana de interfaz ---
     subject = tk.Tk()
     subject.title("Registrar Asistencia con EPP")
     subject.geometry("600x340")
