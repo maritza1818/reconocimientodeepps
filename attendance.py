@@ -4,11 +4,15 @@ from tkinter import *
 import os, cv2, csv
 from PIL import ImageTk, Image
 import pyttsx3
+import datetime   # 👈👈 para el reloj
 
 import show_attendance
 import takeImage
 import trainImage
 import automaticAttendance
+
+# 👇👇 👇 NUEVO: importa tu dashboard
+import dashboard   # <-- asegúrate de tener dashboard.py en la misma carpeta
 
 def text_to_speech(user_text):
     """Texto a voz con manejo de errores"""
@@ -56,10 +60,23 @@ except Exception:
 
 # Títulos
 titl = tk.Label(window, text="CONTROL DE ASISTENCIA", bg="#1c1c1c", fg="yellow", font=("Verdana", 27, "bold"))
-titl.place(x=525, y=12)
+titl.place(x=450, y=90)
 
-a = tk.Label(window, text="BIENVENIDO AL CONTROL DE ASISTENCIA", bg="#1c1c1c", fg="yellow", bd=10, font=("Verdana", 35, "bold"))
+a = tk.Label(window, text="BIENVENIDO AL CONTROL DE ASISTENCIA", bg="#1c1c1c", fg="yellow", bd=10, font=("Verdana", 32, "bold"))
 a.pack()
+
+# 👇👇 RELOJ EN VIVO EN LA VENTANA PRINCIPAL
+clock_label = tk.Label(window, text="", bg="#1c1c1c", fg="white", font=("Verdana", 12, "bold"))
+clock_label.place(x=1030, y=4)
+
+def update_clock():
+    now = datetime.datetime.now()
+    # formato: 31/10/2025  14:33:22
+    clock_label.config(text=now.strftime(" %d/%m/%Y    %H:%M:%S"))
+    window.after(1000, update_clock)
+
+update_clock()
+# 👆👆 fin del reloj
 
 def err_screen():
     """Ventana de error"""
@@ -81,33 +98,28 @@ def TakeImageUI():
     """Interfaz para registrar trabajador"""
     ImageUI = tk.Toplevel()
     ImageUI.title("Captura de rostro")
-    ImageUI.geometry("780x520")  # ✅ AUMENTADO altura para que se vean los botones
+    ImageUI.geometry("780x520")
     ImageUI.configure(background="#1c1c1c")
     ImageUI.resizable(0, 0)
 
-    # Título
     titl = tk.Label(ImageUI, text="Registrando su rostro", bg="#1c1c1c", fg="green", font=("Verdana", 30, "bold"))
-    titl.place(x=150, y=20)  # ✅ Mejor posicionamiento
+    titl.place(x=150, y=20)
 
-    # Campo: Código
     lbl1 = tk.Label(ImageUI, text="Código (ID):", bg="#1c1c1c", fg="yellow", font=("Verdana", 14))
     lbl1.place(x=120, y=100)
     
     txt1 = tk.Entry(ImageUI, width=17, bd=5, font=("Verdana", 18, "bold"), validate="key", validatecommand=(ImageUI.register(testVal), "%P", "%d"))
     txt1.place(x=250, y=95)
 
-    # Campo: Nombre
     lbl2 = tk.Label(ImageUI, text="Nombre:", bg="#1c1c1c", fg="yellow", font=("Verdana", 14))
     lbl2.place(x=120, y=165)
     
     txt2 = tk.Entry(ImageUI, width=17, bd=5, font=("Verdana", 18, "bold"))
     txt2.place(x=250, y=160)
 
-    # Mensaje de estado
     message = tk.Label(ImageUI, text="", bg="#1c1c1c", fg="yellow", width=50, font=("Verdana", 12, "bold"), wraplength=600)
     message.place(x=50, y=230)
 
-    # Funciones de los botones
     def take_image():
         l1 = txt1.get()
         l2 = txt2.get()
@@ -118,12 +130,11 @@ def TakeImageUI():
     def train_image():
         trainImage.TrainImage(haarcasecade_path, trainimage_path, trainimagelabel_path, message, text_to_speech)
 
-    # ✅ BOTONES MÁS VISIBLES Y MEJOR POSICIONADOS
     takeImg = tk.Button(
         ImageUI, 
         text="Tomar Imagen", 
         command=take_image, 
-        bg="#2ecc71",  # Verde
+        bg="#2ecc71",
         fg="white", 
         font=("Verdana", 16, "bold"),
         width=18,
@@ -135,7 +146,7 @@ def TakeImageUI():
         ImageUI, 
         text="Entrenar Imagen", 
         command=train_image, 
-        bg="#3498db",  # Azul
+        bg="#3498db",
         fg="white", 
         font=("Verdana", 16, "bold"),
         width=18,
@@ -143,17 +154,17 @@ def TakeImageUI():
     )
     trainImg.place(x=400, y=350)
 
-    # Botón cerrar
     closeBtn = tk.Button(
         ImageUI,
         text="Cerrar",
         command=ImageUI.destroy,
-        bg="#e74c3c",  # Rojo
+        bg="#e74c3c",
         fg="white",
         font=("Verdana", 14, "bold"),
         width=15
     )
     closeBtn.place(x=280, y=450)
+
 
 # ═══════════════════════════════════════════════════════
 # BOTONES PRINCIPALES
@@ -172,7 +183,7 @@ btn_register.place(x=100, y=520)
 btn_attendance = tk.Button(
     window, 
     text="Tomar Asistencia", 
-    command=lambda: automaticAttendance.subjectChoose(),  # ✅ Sin parámetro
+    command=lambda: automaticAttendance.subjectChoose(),
     bg="black", 
     fg="yellow", 
     font=("Verdana", 16)
@@ -188,6 +199,17 @@ btn_view = tk.Button(
     font=("Verdana", 16)
 )
 btn_view.place(x=1000, y=520)
+
+# 👇👇👇 NUEVO BOTÓN DASHBOARD
+btn_dashboard = tk.Button(
+    window,
+    text="Ver Dashboard",
+    command=dashboard.build_dashboard,   # llama a la función del archivo nuevo
+    bg="black",
+    fg="yellow",
+    font=("Verdana", 16)
+)
+btn_dashboard.place(x=1000, y=600)
 
 btn_exit = tk.Button(
     window, 

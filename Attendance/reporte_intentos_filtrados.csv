@@ -1,0 +1,26 @@
+﻿Enrollment,Name,Date,Zone,Reason,MinuteBucket,Time,Status,EPP_Detected,CaptureSeconds
+12,lilit,2025-10-30,Almacén,Falta: Casco,19:01,19:01:56,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-30,Almacén,Falta: Casco,19:02,19:02:00,NO_REGISTRADO,chaleco,3
+12,lilit,2025-10-30,Almacén,Falta: Casco,19:03,19:03:01,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-30,Portón principal,Falta: Casco,19:07,19:07:48,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-30,Portón principal,Falta: Casco,19:08,19:08:08,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-30,Portón principal,Falta: Casco,19:15,19:15:19,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-30,Portón principal,Falta: Casco,19:18,19:18:25,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-30,Portón principal,Falta: Casco,19:19,19:19:07,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:13,01:13:52,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:14,01:14:00,NO_REGISTRADO,chaleco,8
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:15,01:15:22,NO_REGISTRADO,chaleco,3
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:16,01:16:10,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:17,01:17:09,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:27,01:27:25,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-31,Portón principal,Falta: Chaleco,01:27,01:27:27,NO_REGISTRADO,casco,2
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:28,01:28:17,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-31,Portón principal,Falta: Casco y Chaleco,01:28,01:28:17,NO_REGISTRADO,,1
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:29,01:29:11,NO_REGISTRADO,chaleco,1
+12,lilit,2025-10-31,Portón principal,Falta: Casco y Chaleco,01:29,01:29:36,NO_REGISTRADO,,1
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:40,01:40:19,NO_REGISTRADO,chaleco,2
+12,lilit,2025-10-31,Portón principal,Falta: Casco,01:41,01:41:00,NO_REGISTRADO,chaleco,8
+12,lilit,2025-10-31,Portón principal,Falta: Casco,02:29,02:29:04,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-31,Portón principal,Falta: Chaleco,02:29,02:29:08,NO_REGISTRADO,casco,4
+12,lilit,2025-10-31,Portón principal,Falta: Casco,02:31,02:31:44,NO_REGISTRADO,chaleco,0
+12,lilit,2025-10-31,Portón principal,Falta: Casco,02:32,02:32:11,NO_REGISTRADO,chaleco,0

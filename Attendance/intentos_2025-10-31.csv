@@ -1,0 +1,24 @@
+﻿Enrollment,Name,Date,Time,Status,Reason,Zone,EPP_Detected,CaptureSeconds
+12,lilit,2025-10-31,01:13:52,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,1
+12,lilit,2025-10-31,01:14:00,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,8
+12,lilit,2025-10-31,01:14:22,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,1
+12,lilit,2025-10-31,01:14:51,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,01:15:22,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,3
+12,lilit,2025-10-31,01:16:10,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,01:17:09,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,1
+12,lilit,2025-10-31,01:27:25,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,01:27:27,NO_REGISTRADO,Falta: Chaleco,Portón principal,casco,2
+12,lilit,2025-10-31,01:28:17,NO_REGISTRADO,Falta: Casco y Chaleco,Portón principal,,1
+12,lilit,2025-10-31,01:28:17,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,1
+12,lilit,2025-10-31,01:29:11,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,1
+12,lilit,2025-10-31,01:29:36,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,01:29:36,NO_REGISTRADO,Falta: Casco y Chaleco,Portón principal,,1
+12,lilit,2025-10-31,01:40:19,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,2
+12,lilit,2025-10-31,01:40:52,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,01:41:00,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,8
+12,lilit,2025-10-31,01:41:23,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,02:29:04,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,02:29:08,NO_REGISTRADO,Falta: Chaleco,Portón principal,casco,4
+12,lilit,2025-10-31,02:29:30,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,02:31:44,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0
+12,lilit,2025-10-31,02:32:11,NO_REGISTRADO,Falta: Casco,Portón principal,chaleco,0

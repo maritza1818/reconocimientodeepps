@@ -1,188 +1,348 @@
-import pandas as pd
-import os
-import tkinter as tk
-from tkinter import *
-import csv
-from glob import glob
+# show_attendance.py
+# muestra asistencia (izquierda) + intentos (derecha) PERO
+# los intentos se AGRUPAN para no ver 50 filas casi iguales
 
-#FUNCIÓN 1: Ver asistencia de una materia específica ===
+import os
+import glob
+import csv
+import pandas as pd
+import tkinter as tk
+from tkinter import ttk
+
+
 def subjectchoose(text_to_speech):
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     attendance_base = os.path.join(BASE_DIR, "Attendance")
 
-    def calculate_attendance():
-        Subject = tx.get().strip()
-        if Subject == "":
-            t = "Por favor, ingrese el nombre del trabajador."
-            text_to_speech(t)
-            return
-
-        subject_folder = os.path.join(attendance_base, Subject)
-        filenames = glob(os.path.join(subject_folder, f"{Subject}_*.csv"))
-
-        if not filenames:
-            t = f"No se encontraron registros de asistencia para '{Subject}'."
-            text_to_speech(t)
-            return
-
-        dfs = [pd.read_csv(f) for f in filenames if os.path.getsize(f) > 0]
+    # -------------------------------------------------
+    # helpers de lectura
+    # -------------------------------------------------
+    def leer_asistencias():
+        pattern = os.path.join(attendance_base, "asistencia_*.csv")
+        files = glob.glob(pattern)
+        dfs = []
+        for f in files:
+            if os.path.getsize(f) == 0:
+                continue
+            try:
+                df = pd.read_csv(f, dtype=str)
+            except:
+                continue
+            # asegurar columnas nuevas
+            for col in ["Reason", "Zone", "EPP_Detected", "CaptureSeconds"]:
+                if col not in df.columns:
+                    df[col] = ""
+            dfs.append(df)
+        if not dfs:
+            return pd.DataFrame(columns=[
+                "Enrollment", "Name", "Date", "Time", "Status",
+                "Reason", "Zone", "EPP_Detected", "CaptureSeconds"
+            ])
         df = pd.concat(dfs, ignore_index=True)
+        return df
 
-        expected_cols = {"Enrollment", "Name", "Date", "Time", "Status"}
-        if not expected_cols.issubset(df.columns):
-            t = "Los archivos de asistencia no tienen las columnas esperadas."
-            text_to_speech(t)
-            return
+    def leer_intentos_raw():
+        pattern = os.path.join(attendance_base, "intentos_*.csv")
+        files = glob.glob(pattern)
+        dfs = []
+        for f in files:
+            if os.path.getsize(f) == 0:
+                continue
+            try:
+                df = pd.read_csv(f, dtype=str)
+            except:
+                continue
+            for col in ["Reason", "Zone", "EPP_Detected", "CaptureSeconds"]:
+                if col not in df.columns:
+                    df[col] = ""
+            dfs.append(df)
+        if not dfs:
+            return pd.DataFrame(columns=[
+                "Enrollment", "Name", "Date", "Time", "Status",
+                "Reason", "Zone", "EPP_Detected", "CaptureSeconds"
+            ])
+        df = pd.concat(dfs, ignore_index=True)
+        return df
 
+    # 👇 este es el truco: agrupar para NO mostrar repetidos
+    def agrupar_intentos(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return df
+
+        # 1) convertir fecha
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-        total_days = df["Date"].nunique()
 
-        attendance_summary = (
-            df.groupby(["Enrollment", "Name"])["Date"]
-            .nunique()
-            .reset_index()
-            .rename(columns={"Date": "DiasPresentes"})
+        # 2) crear un “bucket” de minuto para juntar capturas muy seguidas
+        #    si no hay Time, dejamos vacío
+        if "Time" in df.columns:
+            df["MinuteBucket"] = df["Time"].fillna("").str[:5]  # HH:MM
+        else:
+            df["MinuteBucket"] = ""
+
+        # 3) nos quedamos con 1 por:
+        #    persona + día + zona + razón + minuto
+        #    (esto ya quita la mayoría de repetidos)
+        grouped = (
+            df.sort_values(["Date", "Time"])
+              .groupby(
+                  [
+                      "Enrollment",
+                      "Name",
+                      "Date",
+                      "Zone",
+                      "Reason",
+                      "MinuteBucket",
+                  ],
+                  as_index=False
+              )
+              .first()
         )
 
-        attendance_summary["TotalDias"] = total_days
-        attendance_summary["Asistencia%"] = (
-            (attendance_summary["DiasPresentes"] / attendance_summary["TotalDias"]) * 100
-        ).round(2)
+        # 4) ordenamos bonito
+        grouped = grouped.sort_values(["Date", "Time"])
+        return grouped
 
-        df = df.merge(attendance_summary, on=["Enrollment", "Name"], how="left")
-        df["Asistencia"] = df["Asistencia%"].astype(str) + "%"
-        df.drop(columns=["Asistencia%"], inplace=True)
-        df.sort_values(by=["Date", "Time"], inplace=True)
+    # -------------------------------------------------
+    # ventana
+    # -------------------------------------------------
+    win = tk.Tk()
+    win.title("Asistencia e Intentos")
+    win.geometry("1150x520")
+    win.configure(bg="black")
 
-        output_file = os.path.join(subject_folder, "asistencia_detallada.csv")
-        df.to_csv(output_file, index=False)
+    tk.Label(
+        win,
+        text="Asistencia vs Intentos",
+        bg="black",
+        fg="green",
+        font=("arial", 22, "bold"),
+    ).pack(pady=5)
 
-        show_csv_window(output_file, f"Asistencia Detallada - {Subject}")
+    # filtros
+    filtro_frame = tk.Frame(win, bg="black")
+    filtro_frame.pack(fill="x", pady=5)
 
-    subject = Tk()
-    subject.title("Ver Asistencia por Trabajador")
-    subject.geometry("600x350")
-    subject.resizable(0, 0)
-    subject.configure(background="black")
+    tk.Label(
+        filtro_frame,
+        text="Nombre contiene:",
+        bg="black",
+        fg="yellow"
+    ).grid(row=0, column=0, padx=5)
 
-    titl = tk.Label(subject, text="Ver Asistencia de Trabajador", bg="black", fg="green", font=("arial", 25))
-    titl.pack(pady=20)
-
-    sub_label = tk.Label(subject, text="Trabajador:", width=12, height=2, bg="black", fg="yellow", font=("times new roman", 15))
-    sub_label.place(x=40, y=100)
-
-    tx = tk.Entry(subject, width=15, bd=5, bg="black", fg="yellow", font=("times", 30, "bold"))
-    tx.place(x=200, y=100)
-
-    fill_a = tk.Button(subject, text="Ver Asistencia", command=calculate_attendance, bd=7,
-                       font=("times new roman", 15), bg="black", fg="yellow", height=2, width=12)
-    fill_a.place(x=200, y=200)
-
-    subject.mainloop()
-
-
-# === FUNCIÓN 2: Ver asistencia general (todas las materias combinadas) ===
-def ver_asistencia_general(text_to_speech):
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    attendance_base = os.path.join(BASE_DIR, "Attendance")
-
-    all_files = glob(os.path.join(attendance_base, "*", "*.csv"))
-
-    if not all_files:
-        text_to_speech("No se encontraron registros de asistencia del trabajador.")
-        return
-
-    dfs = []
-    for f in all_files:
-        try:
-            df = pd.read_csv(f)
-            if {"Enrollment", "Name", "Date", "Time", "Status"}.issubset(df.columns):
-                df["Materia"] = os.path.basename(os.path.dirname(f))
-                dfs.append(df)
-        except Exception:
-            continue
-
-    if not dfs:
-        text_to_speech("No hay datos válidos para mostrar.")
-        return
-
-    df = pd.concat(dfs, ignore_index=True)
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df.sort_values(by=["Date", "Time"], inplace=True)
-
-    total_days = df["Date"].nunique()
-    summary = (
-        df.groupby(["Enrollment", "Name"])["Date"]
-        .nunique()
-        .reset_index()
-        .rename(columns={"Date": "DiasPresentes"})
+    entry_nombre = tk.Entry(
+        filtro_frame,
+        width=20,
+        bg="black",
+        fg="yellow",
+        font=("times", 12, "bold"),
     )
-    summary["TotalDias"] = total_days
-    summary["Asistencia%"] = (summary["DiasPresentes"] / summary["TotalDias"] * 100).round(2)
-    summary["Asistencia%"] = summary["Asistencia%"].astype(str) + "%"
+    entry_nombre.grid(row=0, column=1, padx=5)
 
-    output_file = os.path.join(attendance_base, "asistencia_general.csv")
-    summary.to_csv(output_file, index=False)
+    tk.Label(
+        filtro_frame,
+        text="Zona:",
+        bg="black",
+        fg="yellow"
+    ).grid(row=0, column=2, padx=5)
 
-    show_csv_window(output_file, "Resumen General de Asistencia")
+    # leer zonas de archivos de asistencia e intentos
+    zonas_existentes = set()
+    for pat in ["asistencia_*.csv", "intentos_*.csv"]:
+        files = glob.glob(os.path.join(attendance_base, pat))
+        for f in files:
+            try:
+                dfz = pd.read_csv(f, dtype=str)
+                if "Zone" in dfz.columns:
+                    zonas_existentes.update(dfz["Zone"].dropna().tolist())
+            except:
+                pass
 
+    zonas_lista = ["Todas"] + sorted([z for z in zonas_existentes if z != ""])
+    combo_zona = ttk.Combobox(
+        filtro_frame,
+        values=zonas_lista,
+        state="readonly",
+        width=15
+    )
+    combo_zona.grid(row=0, column=3, padx=5)
+    combo_zona.set("Todas")
 
-def show_csv_window(csv_path, title):
-    root = tk.Tk()
-    root.title(title)
-    root.configure(background="black")
+    # botones de acción
+    def exportar_asistencia():
+        if not hasattr(win, "df_asistencia_filtrada"):
+            text_to_speech("No hay asistencia filtrada para exportar.")
+            return
+        out = os.path.join(attendance_base, "reporte_asistencia_filtrada.csv")
+        win.df_asistencia_filtrada.to_csv(out, index=False, encoding="utf-8-sig")
+        text_to_speech("Reporte de asistencia guardado.")
 
-    with open(csv_path, newline="", encoding="utf-8-sig") as file:
-        reader = csv.reader(file)
-        r = 0
-        for col in reader:
-            c = 0
-            for row in col:
-                label = tk.Label(
-                    root,
-                    width=15,
-                    height=1,
-                    fg="yellow",
-                    font=("times", 12, "bold"),
-                    bg="black",
-                    text=row,
-                    relief=tk.RIDGE,
-                )
-                label.grid(row=r, column=c)
-                c += 1
-            r += 1
+    def exportar_intentos():
+        if not hasattr(win, "df_intentos_filtrados"):
+            text_to_speech("No hay intentos filtrados para exportar.")
+            return
+        out = os.path.join(attendance_base, "reporte_intentos_filtrados.csv")
+        win.df_intentos_filtrados.to_csv(out, index=False, encoding="utf-8-sig")
+        text_to_speech("Reporte de intentos guardado.")
 
-    root.mainloop()
+    btn_filtrar = tk.Button(
+        filtro_frame,
+        text="Filtrar",
+        bg="black",
+        fg="yellow",
+        font=("times", 12, "bold"),
+        command=lambda: aplicar_filtros(),
+    )
+    btn_filtrar.grid(row=0, column=4, padx=8)
+
+    btn_exp_as = tk.Button(
+        filtro_frame,
+        text="⭳ Exportar Asistencia",
+        bg="darkgreen",
+        fg="white",
+        command=exportar_asistencia,
+    )
+    btn_exp_as.grid(row=0, column=5, padx=8)
+
+    btn_exp_in = tk.Button(
+        filtro_frame,
+        text="⭳ Exportar Intentos",
+        bg="darkred",
+        fg="white",
+        command=exportar_intentos,
+    )
+    btn_exp_in.grid(row=0, column=6, padx=8)
+
+    # -------------------------------------------------
+    # tablas lado a lado
+    # -------------------------------------------------
+    tables_frame = tk.Frame(win, bg="black")
+    tables_frame.pack(fill="both", expand=True, pady=5)
+
+    # ---- tabla asistencia (izq) ----
+    frame_as = tk.LabelFrame(
+        tables_frame,
+        text="ASISTENCIA",
+        bg="black",
+        fg="white",
+        font=("arial", 11, "bold"),
+    )
+    frame_as.pack(side="left", fill="both", expand=True, padx=5)
+
+    cols_as = ("Enrollment", "Name", "Date", "Time", "Status", "Zone", "Reason")
+    tree_as = ttk.Treeview(frame_as, columns=cols_as, show="headings", height=12)
+    for c in cols_as:
+        tree_as.heading(c, text=c)
+        tree_as.column(c, width=100, anchor="w")
+    tree_as.pack(side="left", fill="both", expand=True)
+
+    scroll_as = ttk.Scrollbar(frame_as, orient="vertical", command=tree_as.yview)
+    tree_as.configure(yscroll=scroll_as.set)
+    scroll_as.pack(side="right", fill="y")
+
+    # ---- tabla intentos (der) ----
+    frame_in = tk.LabelFrame(
+        tables_frame,
+        text="INTENTOS / FALLIDOS / FORZADOS (agrupados)",
+        bg="black",
+        fg="white",
+        font=("arial", 11, "bold"),
+    )
+    frame_in.pack(side="left", fill="both", expand=True, padx=5)
+
+    cols_in = ("Enrollment", "Name", "Date", "Time", "Status", "Zone", "Reason")
+    tree_in = ttk.Treeview(frame_in, columns=cols_in, show="headings", height=12)
+    for c in cols_in:
+        tree_in.heading(c, text=c)
+        tree_in.column(c, width=100, anchor="w")
+    tree_in.pack(side="left", fill="both", expand=True)
+
+    scroll_in = ttk.Scrollbar(frame_in, orient="vertical", command=tree_in.yview)
+    tree_in.configure(yscroll=scroll_in.set)
+    scroll_in.pack(side="right", fill="y")
+
+    # -------------------------------------------------
+    # lógica de filtrado
+    # -------------------------------------------------
+    def aplicar_filtros():
+        nombre = entry_nombre.get().strip().lower()
+        zona = combo_zona.get().strip()
+
+        df_as = leer_asistencias()
+        df_in_raw = leer_intentos_raw()
+
+        # asistencia: SOLO las que te interesan
+        df_as = df_as[df_as["Status"].isin(["Entrada", "Salida", "EntradaF"])]
+
+        # INTENTOS: los agrupamos para que no salgan tantos
+        df_in = agrupar_intentos(df_in_raw)
+
+        if nombre != "":
+            df_as = df_as[df_as["Name"].str.lower().str.contains(nombre)]
+            df_in = df_in[df_in["Name"].str.lower().str.contains(nombre)]
+
+        if zona != "" and zona != "Todas":
+            df_as = df_as[df_as["Zone"] == zona]
+            df_in = df_in[df_in["Zone"] == zona]
+
+        # ordenar por fecha/hora si hay
+        if "Date" in df_as.columns and "Time" in df_as.columns:
+            df_as["Date"] = pd.to_datetime(df_as["Date"], errors="coerce")
+            df_as = df_as.sort_values(by=["Date", "Time"])
+
+        if "Date" in df_in.columns and "Time" in df_in.columns:
+            df_in["Date"] = pd.to_datetime(df_in["Date"], errors="coerce")
+            df_in = df_in.sort_values(by=["Date", "Time"])
+
+        # guardar en la ventana para exportar
+        win.df_asistencia_filtrada = df_as
+        win.df_intentos_filtrados = df_in
+
+        # limpiar tablas
+        for i in tree_as.get_children():
+            tree_as.delete(i)
+        for i in tree_in.get_children():
+            tree_in.delete(i)
+
+        # llenar asistencia
+        for _, row in df_as.iterrows():
+            tree_as.insert(
+                "",
+                "end",
+                values=(
+                    row.get("Enrollment", ""),
+                    row.get("Name", ""),
+                    str(row.get("Date", ""))[:10],
+                    row.get("Time", ""),
+                    row.get("Status", ""),
+                    row.get("Zone", ""),
+                    row.get("Reason", ""),
+                ),
+            )
+
+        # llenar intentos AGRUPADOS
+        for _, row in df_in.iterrows():
+            tree_in.insert(
+                "",
+                "end",
+                values=(
+                    row.get("Enrollment", ""),
+                    row.get("Name", ""),
+                    str(row.get("Date", ""))[:10],
+                    row.get("Time", ""),
+                    row.get("Status", ""),
+                    row.get("Zone", ""),
+                    row.get("Reason", ""),
+                ),
+            )
+
+        if df_as.empty and df_in.empty:
+            text_to_speech("No hay registros que coincidan con el filtro.")
+
+    # primera carga
+    aplicar_filtros()
+
+    win.mainloop()
 
 
 def menu_asistencia(text_to_speech):
-    ventana = Tk()
-    ventana.title("Opciones de Asistencia")
-    ventana.geometry("500x300")
-    ventana.configure(bg="black")
-
-    Label(ventana, text="Seleccione tipo de vista:", fg="green", bg="black", font=("Arial", 18)).pack(pady=30)
-
-    Button(
-        ventana,
-        text="📘 Ver Asistencia por Trabajador",
-        command=lambda: [ventana.destroy(), subjectchoose(text_to_speech)],
-        bg="darkblue",
-        fg="white",
-        font=("Arial", 14),
-        height=2,
-        width=25
-    ).pack(pady=10)
-
-    Button(
-        ventana,
-        text="📋 Ver Asistencia General",
-        command=lambda: [ventana.destroy(), ver_asistencia_general(text_to_speech)],
-        bg="darkgreen",
-        fg="white",
-        font=("Arial", 14),
-        height=2,
-        width=25
-    ).pack(pady=10)
-
-    ventana.mainloop()
+    subjectchoose(text_to_speech)
