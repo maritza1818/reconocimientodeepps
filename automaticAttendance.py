@@ -1,5 +1,13 @@
 # automaticAttendance.py
-# versión con: zona + forzado + intentos compactados + MODO EPP ESTRICTO + DEMO FIJO + RELOJ
+# versión con:
+# - zona
+# - forzado (demo)
+# - intentos compactados
+# - MODO EPP ESTRICTO: SOLO CÓDIGO DE CHALECO DEL DUEÑO
+# - reloj
+# - lectura de códigos de barras
+# - fix csv vacíos
+# - fix after cuando se cierra la ventana
 
 from epp_detector_integrado import verify_epp
 from interfaz_asistencia_epp import InterfazAsistenciaEPP
@@ -11,16 +19,17 @@ import datetime
 import time
 import subprocess
 import platform
+from pyzbar.pyzbar import decode
 
-# ================== RUTAS BASE ==================
+# rutas base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 haarcasecade_path = os.path.join(BASE_DIR, "haarcascade_frontalface_default.xml")
 trainimagelabel_path = os.path.join(BASE_DIR, "TrainingImageLabel", "Trainner.yml")
 studentdetail_path = os.path.join(BASE_DIR, "StudentDetails", "studentdetails.csv")
 attendance_base = os.path.join(BASE_DIR, "Attendance")
+epp_registry_path = os.path.join(BASE_DIR, "EPP", "epp_registry.csv")
 
 
-# ================== UTILIDADES ==================
 def text_to_speech(message: str):
     print(f"[TTS] {message}")
     try:
@@ -48,12 +57,32 @@ def open_file(filepath):
         print(f"Archivo guardado en: {filepath}")
 
 
+def leer_csv_seguro(path, columnas):
+    if not os.path.exists(path) or os.path.getsize(path) == 0:
+        return pd.DataFrame(columns=columnas)
+    try:
+        df = pd.read_csv(path, dtype=str)
+    except pd.errors.EmptyDataError:
+        return pd.DataFrame(columns=columnas)
+    for c in columnas:
+        if c not in df.columns:
+            df[c] = ""
+    return df
+
+
+def load_epp_registry():
+    carpeta_epp = os.path.join(BASE_DIR, "EPP")
+    os.makedirs(carpeta_epp, exist_ok=True)
+    cols = ["Barcode", "EPP_Type", "Enrollment", "Name", "Active"]
+    df = leer_csv_seguro(epp_registry_path, cols)
+    df["Barcode"] = df["Barcode"].fillna("").str.upper().str.replace(" ", "")
+    return df
+
+
 def save_attempt_log(row_dict):
-    """Guarda 1 intento en Attendance/intentos_YYYY-MM-DD.csv"""
     os.makedirs(attendance_base, exist_ok=True)
     today = datetime.datetime.now().strftime("%Y-%m-%d")
     intentos_file = os.path.join(attendance_base, f"intentos_{today}.csv")
-
     df_row = pd.DataFrame([row_dict])
     if not os.path.exists(intentos_file):
         df_row.to_csv(intentos_file, index=False, encoding="utf-8-sig")
@@ -74,11 +103,10 @@ def save_attempts_batch(rows):
 
 def compact_attempts(rows, max_per_person=2):
     compacted = []
-    seen = set()  # (enrollment, minute, reason_short)
-
+    seen = set()
     for r in rows:
         enroll = r.get("Enrollment", "")
-        minute_bucket = r.get("Time", "")[:5]  # HH:MM
+        minute_bucket = r.get("Time", "")[:5]
         reason_short = (r.get("Reason", "") or "")[:40]
         key = (enroll, minute_bucket, reason_short)
         if key in seen:
@@ -96,11 +124,9 @@ def compact_attempts(rows, max_per_person=2):
                 final.append(r)
                 count_by_person[p] += 1
         return final
-
     return compacted
 
 
-# ================== MODO EPP ESTRICTO ==================
 def parse_epp_results(epp_results, min_casco=0.65, min_chaleco=0.65):
     tiene_casco = False
     tiene_chaleco = False
@@ -114,7 +140,6 @@ def parse_epp_results(epp_results, min_casco=0.65, min_chaleco=0.65):
                 score = float(r[1])
             except:
                 score = 1.0
-
         if ("casco" in label or "helmet" in label) and score >= min_casco:
             tiene_casco = True
         if ("chaleco" in label or "vest" in label) and score >= min_chaleco:
@@ -122,7 +147,6 @@ def parse_epp_results(epp_results, min_casco=0.65, min_chaleco=0.65):
     return tiene_casco, tiene_chaleco
 
 
-# ================== VENTANA PRINCIPAL ==================
 def subjectChoose():
     subject = tk.Tk()
     subject.title("Registrar Asistencia con EPP")
@@ -139,23 +163,26 @@ def subjectChoose():
     )
     titulo.pack(pady=5)
 
-    # 👇👇 RELOJ EN TIEMPO REAL EN ESTA VENTANA
     lbl_clock = tk.Label(
         subject,
         text="",
         bg="black",
         fg="white",
-        font=("arial", 11, "bold")
+        font=("arial", 11, "bold"),
     )
     lbl_clock.pack(pady=2)
 
     def actualizar_reloj():
+        if not subject.winfo_exists():
+            return
         ahora = datetime.datetime.now()
         lbl_clock.config(text=ahora.strftime(" %d/%m/%Y   %H:%M:%S"))
-        subject.after(1000, actualizar_reloj)
+        try:
+            subject.after(1000, actualizar_reloj)
+        except tk.TclError:
+            pass
 
     actualizar_reloj()
-    # 👆👆 FIN RELOJ
 
     estado_label = tk.Label(
         subject,
@@ -258,7 +285,6 @@ def subjectChoose():
         ahora = datetime.datetime.now().strftime("%H:%M:%S")
         historial_list.insert(0, f"{ahora} | {nombre} | {texto}")
 
-    # ================== FUNCIÓN PRINCIPAL ==================
     def FillAttendance():
         trabajador_buscado = tx.get().strip()
         zona_actual = zona_var.get().strip() or "General"
@@ -273,16 +299,17 @@ def subjectChoose():
             set_estado("NO REGISTRADO", "Modelo no encontrado. Entrene primero.", "red")
             return
 
+        cam = None
         try:
             recognizer = cv2.face.LBPHFaceRecognizer_create()
             recognizer.read(trainimagelabel_path)
             face_cascade = cv2.CascadeClassifier(haarcasecade_path)
 
-            if not os.path.exists(studentdetail_path):
+            if not os.path.exists(studentdetail_path) or os.path.getsize(studentdetail_path) == 0:
                 set_estado("NO REGISTRADO", "No hay trabajadores registrados.", "red")
                 return
 
-            df_students = pd.read_csv(studentdetail_path, dtype=str)
+            df_students = leer_csv_seguro(studentdetail_path, ["Enrollment", "Name"])
             df_students["Enrollment"] = df_students["Enrollment"].astype(str)
 
             existe = df_students["Name"].str.lower().str.contains(
@@ -300,7 +327,7 @@ def subjectChoose():
             today = datetime.datetime.now().strftime("%Y-%m-%d")
             today_file = os.path.join(attendance_base, f"asistencia_{today}.csv")
 
-            cols = [
+            cols_asistencia = [
                 "Enrollment",
                 "Name",
                 "Date",
@@ -311,14 +338,7 @@ def subjectChoose():
                 "EPP_Detected",
                 "CaptureSeconds",
             ]
-
-            if os.path.exists(today_file):
-                prev_attendance = pd.read_csv(today_file, dtype=str)
-                for c in cols:
-                    if c not in prev_attendance.columns:
-                        prev_attendance[c] = ""
-            else:
-                prev_attendance = pd.DataFrame(columns=cols)
+            prev_attendance = leer_csv_seguro(today_file, cols_asistencia)
 
             cam = cv2.VideoCapture(0)
             if not cam.isOpened():
@@ -340,7 +360,8 @@ def subjectChoose():
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             cv2.resizeWindow(window_name, 1280, 720)
 
-            salir_ya = False  # 👈 para romper el while cuando es demo
+            epp_registry_df = load_epp_registry()
+            salir_ya = False
 
             while True:
                 ret, frame = cam.read()
@@ -348,12 +369,11 @@ def subjectChoose():
                     motivo_fallo = "No se pudo leer la cámara"
                     break
 
-                # 👇👇 HORA EN TIEMPO REAL SOBRE LA CÁMARA
                 ahora_txt = datetime.datetime.now().strftime("%d/%m/%Y %H:%M:%S")
                 cv2.putText(
                     frame,
                     ahora_txt,
-                    (850, 30),  # posición arriba derecha
+                    (850, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.7,
                     (0, 255, 255),
@@ -378,7 +398,7 @@ def subjectChoose():
                         if not match.empty:
                             name = match.values[0]
 
-                            # NO es el escrito
+                            # validar que sea el trabajador buscado
                             if trabajador_buscado.lower() not in name.lower():
                                 info_trabajador = {
                                     "nombre": f"{name} (NO ES {trabajador_buscado})",
@@ -387,20 +407,21 @@ def subjectChoose():
                                     "bbox_rostro": (x, y, w, h),
                                 }
                                 motivo_fallo = "Se detectó otra persona"
-                                attempts_buffer.append({
-                                    "Enrollment": Id_str,
-                                    "Name": name,
-                                    "Date": today,
-                                    "Time": datetime.datetime.now().strftime("%H:%M:%S"),
-                                    "Status": "NO_REGISTRADO",
-                                    "Reason": "No era el trabajador solicitado",
-                                    "Zone": zona_actual,
-                                    "EPP_Detected": "",
-                                    "CaptureSeconds": str(int(time.time() - start_time)),
-                                })
+                                attempts_buffer.append(
+                                    {
+                                        "Enrollment": Id_str,
+                                        "Name": name,
+                                        "Date": today,
+                                        "Time": datetime.datetime.now().strftime("%H:%M:%S"),
+                                        "Status": "NO_REGISTRADO",
+                                        "Reason": "No era el trabajador solicitado",
+                                        "Zone": zona_actual,
+                                        "EPP_Detected": "",
+                                        "CaptureSeconds": str(int(time.time() - start_time)),
+                                    }
+                                )
                                 continue
 
-                            # SÍ es el escrito
                             info_trabajador = {
                                 "nombre": name,
                                 "id": Id_str,
@@ -408,7 +429,7 @@ def subjectChoose():
                                 "bbox_rostro": (x, y, w, h),
                             }
 
-                            # 👇👇 DEMO: si está marcado, REGISTRAMOS SIN MIRAR EPP
+                            # modo demo
                             if force_var.get():
                                 timeStamp = datetime.datetime.now().strftime("%H:%M:%S")
                                 row = {
@@ -425,50 +446,88 @@ def subjectChoose():
                                 new_rows.append(row)
                                 trabajador_registrado = True
 
-                                attempts_buffer.append({
-                                    "Enrollment": Id_str,
-                                    "Name": name,
-                                    "Date": today,
-                                    "Time": timeStamp,
-                                    "Status": "REG_FORZADO",
-                                    "Reason": "REGISTRO DEMO (sin EPP)",
-                                    "Zone": zona_actual,
-                                    "EPP_Detected": "",
-                                    "CaptureSeconds": str(int(time.time() - start_time)),
-                                })
-
+                                attempts_buffer.append(
+                                    {
+                                        "Enrollment": Id_str,
+                                        "Name": name,
+                                        "Date": today,
+                                        "Time": timeStamp,
+                                        "Status": "REG_FORZADO",
+                                        "Reason": "REGISTRO DEMO (sin EPP)",
+                                        "Zone": zona_actual,
+                                        "EPP_Detected": "",
+                                        "CaptureSeconds": str(int(time.time() - start_time)),
+                                    }
+                                )
                                 salir_ya = True
-                                break  # salir del for de caras
+                                break
 
-                            # ====== AQUÍ SÍ MIRAMOS EPP (modo estricto) ======
+                            # detección por color (solo para mostrar en pantalla)
                             epp_results = verify_epp(frame)
-                            print("EPP DEVUELTO:", epp_results)
-                            tiene_casco, tiene_chaleco = parse_epp_results(epp_results)
-                            has_epp = tiene_casco and tiene_chaleco
+                            _, tiene_chaleco_color = parse_epp_results(epp_results)
                             epp_detected_str = ";".join([str(r[0]) for r in epp_results])
 
-                            if not has_epp:
-                                faltantes = []
-                                if not tiene_casco:
-                                    faltantes.append("Casco")
-                                if not tiene_chaleco:
-                                    faltantes.append("Chaleco")
-                                motivo_fallo = "Falta: " + " y ".join(faltantes)
+                            # lectura de códigos de barras
+                            barcodes = decode(frame)
 
-                                attempts_buffer.append({
-                                    "Enrollment": Id_str,
-                                    "Name": name,
-                                    "Date": today,
-                                    "Time": datetime.datetime.now().strftime("%H:%M:%S"),
-                                    "Status": "NO_REGISTRADO",
-                                    "Reason": motivo_fallo,
-                                    "Zone": zona_actual,
-                                    "EPP_Detected": epp_detected_str,
-                                    "CaptureSeconds": str(int(time.time() - start_time)),
-                                })
+                            code_has_chaleco = False
+
+                            for b in barcodes:
+                                code = b.data.decode("utf-8").strip()
+                                code_norm = code.upper().replace(" ", "")
+
+                                (bx, by, bw, bh) = b.rect
+                                cv2.rectangle(frame, (bx, by), (bx + bw, by + bh), (0, 255, 255), 2)
+                                cv2.putText(
+                                    frame,
+                                    code,
+                                    (bx, by - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX,
+                                    0.5,
+                                    (0, 255, 255),
+                                    1,
+                                )
+
+                                match_code = epp_registry_df[
+                                    epp_registry_df["Barcode"] == code_norm
+                                ]
+                                # si no existe el código, lo ignoramos (no lo marcamos como fallo aquí)
+                                if match_code.empty:
+                                    continue
+
+                                epp_owner = str(match_code.iloc[0]["Enrollment"]).strip()
+                                epp_type = str(match_code.iloc[0]["EPP_Type"]).lower()
+                                epp_active = str(match_code.iloc[0].get("Active", "1")).lower()
+
+                                if epp_active not in ["1", "true", "yes", "si", "sí"]:
+                                    continue
+
+                                # SOLO chaleco del mismo trabajador
+                                if epp_type == "chaleco" and epp_owner == Id_str:
+                                    code_has_chaleco = True
+
+                            # REGLA FINAL (ESTRICTO):
+                            # SOLO se registra si hay código de chaleco del dueño
+                            has_epp = code_has_chaleco
+
+                            if not has_epp:
+                                motivo_fallo = "Falta: código de CHALECO del dueño (no se acepta solo casco ni color)"
+                                attempts_buffer.append(
+                                    {
+                                        "Enrollment": Id_str,
+                                        "Name": name,
+                                        "Date": today,
+                                        "Time": datetime.datetime.now().strftime("%H:%M:%S"),
+                                        "Status": "NO_REGISTRADO",
+                                        "Reason": motivo_fallo,
+                                        "Zone": zona_actual,
+                                        "EPP_Detected": epp_detected_str,
+                                        "CaptureSeconds": str(int(time.time() - start_time)),
+                                    }
+                                )
                                 continue
 
-                            # EPP OK ✔
+                            # si llegó hasta aquí → registrar
                             timeStamp = datetime.datetime.now().strftime("%H:%M:%S")
                             row = {
                                 "Enrollment": Id_str,
@@ -484,7 +543,6 @@ def subjectChoose():
                             new_rows.append(row)
                             trabajador_registrado = True
 
-                # dibujar
                 frame = interfaz.dibujar_interfaz_completa(
                     frame,
                     info_trabajador,
@@ -493,6 +551,12 @@ def subjectChoose():
                 )
                 cv2.imshow(window_name, frame)
 
+                try:
+                    subject.update_idletasks()
+                    subject.update()
+                except tk.TclError:
+                    break
+
                 if salir_ya:
                     break
                 if time.time() - start_time > capture_duration:
@@ -500,14 +564,9 @@ def subjectChoose():
                 if cv2.waitKey(1) & 0xFF == 27:
                     break
 
-            cam.release()
-            cv2.destroyAllWindows()
-
-            # ====== guardar asistencia ======
+            # guardar asistencia
             if len(new_rows):
-                appended = pd.concat(
-                    [prev_attendance, pd.DataFrame(new_rows)], ignore_index=True
-                )
+                appended = pd.concat([prev_attendance, pd.DataFrame(new_rows)], ignore_index=True)
             else:
                 appended = prev_attendance
 
@@ -516,9 +575,9 @@ def subjectChoose():
                 keep="first",
                 inplace=True,
             )
-            appended.to_csv(today_file, index=False)
+            appended.to_csv(today_file, index=False, encoding="utf-8-sig")
 
-            # ====== guardar intentos ======
+            # guardar intentos
             if attempts_buffer:
                 compacted = compact_attempts(attempts_buffer, max_per_person=2)
                 save_attempts_batch(compacted)
@@ -533,6 +592,11 @@ def subjectChoose():
 
         except Exception as e:
             set_estado("ERROR", str(e), "red")
+
+        finally:
+            if cam is not None:
+                cam.release()
+            cv2.destroyAllWindows()
 
     btn_reg = tk.Button(
         subject,

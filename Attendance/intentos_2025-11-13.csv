@@ -1,0 +1,9 @@
+﻿Enrollment,Name,Date,Time,Status,Reason,Zone,EPP_Detected,CaptureSeconds
+111,maritza claudia,2025-11-13,16:11:34,NO_REGISTRADO,Falta: código de CHALECO del dueño (no se acepta solo casco ni color),Portón principal,casco;chaleco,0
+12,lilit,2025-11-13,16:11:35,NO_REGISTRADO,No era el trabajador solicitado,Portón principal,,0
+12,lilit,2025-11-13,16:12:30,NO_REGISTRADO,No era el trabajador solicitado,Portón principal,,0
+111,maritza claudia,2025-11-13,16:12:30,NO_REGISTRADO,Falta: código de CHALECO del dueño (no se acepta solo casco ni color),Portón principal,casco,0
+12,lilit,2025-11-13,16:13:08,NO_REGISTRADO,No era el trabajador solicitado,Portón principal,,0
+1,lilit,2025-11-13,16:25:12,NO_REGISTRADO,Falta: código de CHALECO del dueño (no se acepta solo casco ni color),Portón principal,casco,1
+1,lilit,2025-11-13,16:25:42,NO_REGISTRADO,Falta: código de CHALECO del dueño (no se acepta solo casco ni color),Portón principal,casco,0
+1,lilit,2025-11-13,16:26:05,NO_REGISTRADO,Falta: código de CHALECO del dueño (no se acepta solo casco ni color),Portón principal,casco,0

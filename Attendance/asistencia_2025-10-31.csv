@@ -1,2 +1,2 @@
-Enrollment,Name,Date,Time,Status,Reason,Zone,EPP_Detected,CaptureSeconds
+﻿Enrollment,Name,Date,Time,Status,Reason,Zone,EPP_Detected,CaptureSeconds
 12,lilit,2025-10-31,01:13:52,Entrada,OK,Portón principal,casco;chaleco,1
