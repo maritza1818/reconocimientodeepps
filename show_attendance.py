@@ -1,592 +1,492 @@
+# show_attendance.py
+# Muestra asistencia (izquierda) + intentos (derecha)
+# Interfaz modernizada para IHC: tema oscuro, filtros y resumen.
+
 import os
+import glob
 import pandas as pd
 import tkinter as tk
 from tkinter import ttk
-from glob import glob
-import datetime
 
-# ==============================
-# CONFIGURACIÓN GLOBAL / RUTAS
-# ==============================
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ATTENDANCE_BASE = os.path.join(BASE_DIR, "Attendance")
-
-# Crear carpeta si no existe
-os.makedirs(ATTENDANCE_BASE, exist_ok=True)
-
-# Paleta de colores (igual que en attendance.py / automaticAttendance.py)
-PRIMARY_BG = "#020617"        # Fondo principal
-SECONDARY_BG = "#0f172a"      # Tarjeta
-ACCENT = "#22c55e"            # Verde principal
-ACCENT_SECONDARY = "#38bdf8"  # Azul cian
+# Paleta coherente con el resto del sistema
+PRIMARY_BG = "#020617"      # fondo general
+PANEL_BG = "#0f172a"        # paneles / tarjetas
+SURFACE_BG = "#020617"
 TEXT_PRIMARY = "#e5e7eb"
 TEXT_SECONDARY = "#9ca3af"
-WARNING_COLOR = "#facc15"
-ERROR_COLOR = "#f97373"
+ACCENT = "#22c55e"
+ACCENT_SECONDARY = "#38bdf8"
+DANGER = "#f97373"
+WARNING = "#facc15"
 
 
-# ==============================
-# HELPERS
-# ==============================
+def subjectchoose(text_to_speech):
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    attendance_base = os.path.join(BASE_DIR, "Attendance")
 
-def fade_in_window(win):
-    """Animación de aparición suave (alpha de 0 a 1) para Tk/Toplevel."""
-    try:
-        win.attributes("-alpha", 0.0)
-    except Exception:
-        return
-
-    def _fade(alpha=0.0):
-        if alpha < 1.0:
-            try:
-                win.attributes("-alpha", alpha)
-            except Exception:
-                return
-            win.after(25, _fade, alpha + 0.08)
-
-    _fade()
-
-
-def load_all_attendance_frames():
-    """
-    Carga TODOS los CSV de asistencia del patrón:
-        Attendance/asistencia_YYYY-MM-DD.csv
-    Devuelve un DataFrame concatenado o None si no hay datos válidos.
-    """
-    pattern = os.path.join(ATTENDANCE_BASE, "asistencia_*.csv")
-    files = glob(pattern)
-
-    if not files:
-        return None
-
-    dfs = []
-    expected_cols = {"Enrollment", "Name", "Date", "Time", "Status"}
-
-    for f in files:
-        try:
-            if os.path.getsize(f) == 0:
+    # -------------------------------------------------
+    # helpers de lectura
+    # -------------------------------------------------
+    def leer_asistencias():
+        pattern = os.path.join(attendance_base, "asistencia_*.csv")
+        files = glob.glob(pattern)
+        dfs = []
+        for f in files:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
                 continue
-            df = pd.read_csv(f, dtype=str)
-            if expected_cols.issubset(df.columns):
-                dfs.append(df)
-        except Exception:
-            continue
+            try:
+                df = pd.read_csv(f, dtype=str)
+            except pd.errors.EmptyDataError:
+                continue
+            for col in ["Reason", "Zone", "EPP_Detected", "CaptureSeconds"]:
+                if col not in df.columns:
+                    df[col] = ""
+            dfs.append(df)
+        if not dfs:
+            return pd.DataFrame(
+                columns=[
+                    "Enrollment",
+                    "Name",
+                    "Date",
+                    "Time",
+                    "Status",
+                    "Reason",
+                    "Zone",
+                    "EPP_Detected",
+                    "CaptureSeconds",
+                ]
+            )
+        df = pd.concat(dfs, ignore_index=True)
+        return df
 
-    if not dfs:
-        return None
+    def leer_intentos():
+        pattern = os.path.join(attendance_base, "intentos_*.csv")
+        files = glob.glob(pattern)
+        dfs = []
+        for f in files:
+            if not os.path.exists(f) or os.path.getsize(f) == 0:
+                continue
+            try:
+                df = pd.read_csv(f, dtype=str)
+            except pd.errors.EmptyDataError:
+                continue
+            for col in ["Reason", "Zone", "EPP_Detected", "CaptureSeconds"]:
+                if col not in df.columns:
+                    df[col] = ""
+            dfs.append(df)
+        if not dfs:
+            return pd.DataFrame(
+                columns=[
+                    "Enrollment",
+                    "Name",
+                    "Date",
+                    "Time",
+                    "Status",
+                    "Reason",
+                    "Zone",
+                    "EPP_Detected",
+                    "CaptureSeconds",
+                ]
+            )
+        df = pd.concat(dfs, ignore_index=True)
+        return df
 
-    df_all = pd.concat(dfs, ignore_index=True)
-    return df_all
+    # -------------------------------------------------
+    # ventana principal
+    # -------------------------------------------------
+    win = tk.Toplevel()
+    win.title("Histórico de Asistencia y EPP")
+    win.geometry("1180x640")
+    win.configure(bg=PRIMARY_BG)
+    win.resizable(0, 0)
 
-
-def create_toplevel(title, width=800, height=500):
-    """
-    Crea una ventana Toplevel si ya existe una raíz Tk,
-    o una raíz Tk si no existe ninguna. Devuelve (window, is_standalone).
-    """
-    root = tk._default_root
-    if root is None:
-        win = tk.Tk()
-        is_standalone = True
-    else:
-        win = tk.Toplevel(root)
-        is_standalone = False
-
-    win.title(title)
-    win.geometry(f"{width}x{height}")
-    win.configure(background=PRIMARY_BG)
-    fade_in_window(win)
-    return win, is_standalone
-
-
-def style_treeview(root):
-    """Aplica estilo oscuro al Treeview."""
-    style = ttk.Style(root)
+    # --------- estilos ttk (Treeview oscuro) ----------
+    style = ttk.Style(win)
     try:
-        style.theme_use("default")
-    except Exception:
+        style.theme_use("clam")
+    except tk.TclError:
         pass
 
     style.configure(
-        "DarkTreeview",
-        background=SECONDARY_BG,
+        "Dark.Treeview",
+        background=PANEL_BG,
         foreground=TEXT_PRIMARY,
-        fieldbackground=SECONDARY_BG,
-        rowheight=24,
-        bordercolor=PRIMARY_BG,
-        relief="flat",
+        fieldbackground=PANEL_BG,
+        bordercolor=PANEL_BG,
+        borderwidth=0,
+        rowheight=22,
     )
     style.map(
-        "DarkTreeview",
-        background=[("selected", ACCENT_SECONDARY)],
-        foreground=[("selected", "#000000")],
+        "Dark.Treeview",
+        background=[("selected", "#1d4ed8")],
+        foreground=[("selected", "#ffffff")],
     )
     style.configure(
-        "DarkTreeview.Heading",
+        "Dark.Treeview.Heading",
         background=PRIMARY_BG,
         foreground=TEXT_PRIMARY,
         relief="flat",
-        font=("Segoe UI Semibold", 10),
+        font=("Segoe UI Semibold", 9),
     )
 
-
-# ==============================
-# TABLA GENÉRICA PARA MOSTRAR DF
-# ==============================
-
-def show_csv_window(df, title):
-    """
-    Muestra un DataFrame en una ventana con tabla (Treeview) y scroll.
-    """
-    if df is None or df.empty:
-        return
-
-    win, is_standalone = create_toplevel(title, width=950, height=550)
-
-    # Header
-    header = tk.Frame(win, bg=PRIMARY_BG)
-    header.pack(fill="x", padx=20, pady=(20, 10))
-
-    tk.Label(
-        header,
-        text=title,
-        bg=PRIMARY_BG,
-        fg=TEXT_PRIMARY,
-        font=("Segoe UI Semibold", 18),
-    ).pack(anchor="w")
-
-    tk.Label(
-        header,
-        text=f"Registros: {len(df)}",
-        bg=PRIMARY_BG,
-        fg=TEXT_SECONDARY,
-        font=("Segoe UI", 9),
-    ).pack(anchor="w", pady=(3, 0))
-
-    # Frame de tarjeta para la tabla
-    card = tk.Frame(win, bg=SECONDARY_BG, bd=0, relief="flat")
-    card.pack(expand=True, fill="both", padx=20, pady=(10, 20))
-
-    # Estilo Treeview
-    style_treeview(win)
-
-    # Frame interno con scrollbars
-    table_frame = tk.Frame(card, bg=SECONDARY_BG)
-    table_frame.pack(expand=True, fill="both", padx=10, pady=10)
-
-    cols = list(df.columns)
-
-    tree = ttk.Treeview(
-        table_frame,
-        columns=cols,
-        show="headings",
-        style="DarkTreeview",
-    )
-
-    # Scrollbars
-    vsb = ttk.Scrollbar(
-        table_frame, orient="vertical", command=tree.yview
-    )
-    hsb = ttk.Scrollbar(
-        table_frame, orient="horizontal", command=tree.xview
-    )
-    tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-
-    vsb.pack(side="right", fill="y")
-    hsb.pack(side="bottom", fill="x")
-    tree.pack(side="left", fill="both", expand=True)
-
-    # Configurar columnas
-    for col in cols:
-        tree.heading(col, text=col)
-        # Ancho base dependiendo del tipo de columna
-        if col.lower() in ("date", "time", "status"):
-            width = 90
-        elif col.lower() in ("enrollment",):
-            width = 100
-        else:
-            width = 150
-        tree.column(col, width=width, anchor="center")
-
-    # Insertar datos
-    for _, row in df.iterrows():
-        values = [str(row[c]) for c in cols]
-        tree.insert("", "end", values=values)
-
-    # Botón cerrar
-    bottom = tk.Frame(win, bg=PRIMARY_BG)
-    bottom.pack(fill="x", padx=20, pady=(0, 15))
-
-    tk.Button(
-        bottom,
-        text="Cerrar",
-        command=win.destroy,
-        bg=PRIMARY_BG,
-        fg=TEXT_SECONDARY,
-        activebackground="#111827",
-        activeforeground=TEXT_PRIMARY,
-        font=("Segoe UI", 10),
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        padx=16,
-        pady=6,
-    ).pack(side="right")
-
-    if is_standalone:
-        win.mainloop()
-
-
-# ==============================
-# 1. VER ASISTENCIA POR TRABAJADOR
-# ==============================
-
-def subjectchoose(text_to_speech):
-    """
-    Pide nombre de trabajador y muestra su asistencia detallada
-    (Entrada/Salida por fecha) usando los archivos asistencia_YYYY-MM-DD.csv.
-    """
-    subject_win, is_standalone = create_toplevel(
-        "Ver asistencia por trabajador",
-        width=780,
-        height=420,
-    )
-    subject_win.resizable(0, 0)
-
-    # CONTENEDOR
-    container = tk.Frame(subject_win, bg=PRIMARY_BG)
-    container.pack(expand=True, fill="both", padx=30, pady=30)
-
+    # -------------------------------------------------
     # HEADER
-    header = tk.Frame(container, bg=PRIMARY_BG)
-    header.pack(fill="x", pady=(0, 15))
+    # -------------------------------------------------
+    top = tk.Frame(win, bg=PRIMARY_BG)
+    top.pack(fill="x", padx=16, pady=(10, 4))
 
-    tk.Label(
-        header,
-        text="Ver asistencia de trabajador",
+    title_lbl = tk.Label(
+        top,
+        text="Histórico de Asistencia e Intentos (EPP + Códigos)",
         bg=PRIMARY_BG,
         fg=TEXT_PRIMARY,
-        font=("Segoe UI Semibold", 20),
-    ).pack(anchor="w")
+        font=("Segoe UI Semibold", 16),
+        anchor="w",
+    )
+    title_lbl.pack(side="left")
 
-    tk.Label(
-        header,
-        text=(
-            "Ingrese el nombre (o parte del nombre) del trabajador tal como figura "
-            "en la base de datos de registros."
-        ),
+    summary_lbl = tk.Label(
+        top,
+        text="",
         bg=PRIMARY_BG,
         fg=TEXT_SECONDARY,
         font=("Segoe UI", 10),
-        justify="left",
-        wraplength=700,
-    ).pack(anchor="w", pady=(4, 0))
+        anchor="e",
+    )
+    summary_lbl.pack(side="right")
 
-    # TARJETA CENTRAL
-    card = tk.Frame(container, bg=SECONDARY_BG, bd=0, relief="flat")
-    card.pack(fill="both", expand=True, pady=(10, 0))
+    # -------------------------------------------------
+    # FILTROS
+    # -------------------------------------------------
+    filtro_frame = tk.Frame(win, bg=PANEL_BG)
+    filtro_frame.pack(fill="x", padx=16, pady=(0, 8))
 
-    form = tk.Frame(card, bg=SECONDARY_BG)
-    form.pack(fill="x", padx=30, pady=(25, 10))
-
+    # Nombre
     tk.Label(
-        form,
-        text="Trabajador",
-        bg=SECONDARY_BG,
-        fg=TEXT_PRIMARY,
-        font=("Segoe UI", 11, "bold"),
-    ).grid(row=0, column=0, sticky="w", pady=(0, 3))
+        filtro_frame,
+        text="Nombre contiene:",
+        bg=PANEL_BG,
+        fg=TEXT_SECONDARY,
+        font=("Segoe UI", 10),
+    ).grid(row=0, column=0, padx=(12, 4), pady=8, sticky="w")
 
-    tx = tk.Entry(
-        form,
+    entry_nombre = tk.Entry(
+        filtro_frame,
         width=24,
-        bd=0,
-        font=("Segoe UI", 16, "bold"),
-        bg="#020617",
+        bg=PRIMARY_BG,
         fg=TEXT_PRIMARY,
         insertbackground=TEXT_PRIMARY,
         relief="flat",
+        font=("Segoe UI", 10),
     )
-    tx.grid(row=1, column=0, sticky="we", pady=(0, 8), ipady=4)
-    tk.Frame(form, bg=ACCENT_SECONDARY, height=2).grid(
-        row=2, column=0, sticky="we", pady=(0, 5)
+    entry_nombre.grid(row=0, column=1, padx=4, pady=8, sticky="w")
+
+    # Desde
+    tk.Label(
+        filtro_frame,
+        text="Desde (YYYY-MM-DD):",
+        bg=PANEL_BG,
+        fg=TEXT_SECONDARY,
+        font=("Segoe UI", 10),
+    ).grid(row=0, column=2, padx=(20, 4), pady=8, sticky="w")
+
+    entry_desde = tk.Entry(
+        filtro_frame,
+        width=14,
+        bg=PRIMARY_BG,
+        fg=TEXT_PRIMARY,
+        insertbackground=TEXT_PRIMARY,
+        relief="flat",
+        font=("Segoe UI", 10),
     )
+    entry_desde.grid(row=0, column=3, padx=4, pady=8, sticky="w")
+
+    # Hasta
+    tk.Label(
+        filtro_frame,
+        text="Hasta (YYYY-MM-DD):",
+        bg=PANEL_BG,
+        fg=TEXT_SECONDARY,
+        font=("Segoe UI", 10),
+    ).grid(row=0, column=4, padx=(20, 4), pady=8, sticky="w")
+
+    entry_hasta = tk.Entry(
+        filtro_frame,
+        width=14,
+        bg=PRIMARY_BG,
+        fg=TEXT_PRIMARY,
+        insertbackground=TEXT_PRIMARY,
+        relief="flat",
+        font=("Segoe UI", 10),
+    )
+    entry_hasta.grid(row=0, column=5, padx=4, pady=8, sticky="w")
+
+    # Botones de acción
+    btn_frame = tk.Frame(filtro_frame, bg=PANEL_BG)
+    btn_frame.grid(row=0, column=6, padx=(20, 10), pady=4, sticky="e")
+
+    def limpiar_filtros():
+        entry_nombre.delete(0, "end")
+        entry_desde.delete(0, "end")
+        entry_hasta.delete(0, "end")
+        aplicar_filtros(voz=True)
+
+    btn_aplicar = tk.Button(
+        btn_frame,
+        text="Aplicar filtros",
+        command=lambda: aplicar_filtros(voz=True),
+        bg=ACCENT_SECONDARY,
+        fg="#020617",
+        font=("Segoe UI Semibold", 9),
+        bd=0,
+        padx=10,
+        pady=4,
+        cursor="hand2",
+    )
+    btn_aplicar.pack(side="left", padx=4)
+
+    btn_limpiar = tk.Button(
+        btn_frame,
+        text="Limpiar",
+        command=limpiar_filtros,
+        bg="#1f2937",
+        fg=TEXT_PRIMARY,
+        font=("Segoe UI", 9),
+        bd=0,
+        padx=10,
+        pady=4,
+        cursor="hand2",
+    )
+    btn_limpiar.pack(side="left", padx=4)
+
+    btn_cerrar = tk.Button(
+        btn_frame,
+        text="Cerrar",
+        command=win.destroy,
+        bg="#b91c1c",
+        fg="white",
+        font=("Segoe UI", 9),
+        bd=0,
+        padx=10,
+        pady=4,
+        cursor="hand2",
+    )
+    btn_cerrar.pack(side="left", padx=4)
+
+    # -------------------------------------------------
+    # SPLIT: IZQUIERDA (asistencia) / DERECHA (intentos)
+    # -------------------------------------------------
+    split = tk.Frame(win, bg=PRIMARY_BG)
+    split.pack(fill="both", expand=True, padx=16, pady=(4, 12))
+
+    # ---------- ASISTENCIA ----------
+    left = tk.Frame(split, bg=PRIMARY_BG)
+    left.pack(side="left", fill="both", expand=True, padx=(0, 8))
 
     tk.Label(
-        form,
-        text="Ejemplo: Juan Pérez / María / López (búsqueda no sensible a mayúsculas).",
-        bg=SECONDARY_BG,
-        fg=TEXT_SECONDARY,
-        font=("Segoe UI", 9),
-    ).grid(row=3, column=0, sticky="w")
+        left,
+        text="Asistencia registrada",
+        bg=PRIMARY_BG,
+        fg=TEXT_PRIMARY,
+        font=("Segoe UI Semibold", 12),
+    ).pack(anchor="w", pady=(0, 4))
 
-    # Mensajes
-    msg_label = tk.Label(
-        card,
-        text="",
-        bg=SECONDARY_BG,
-        fg=TEXT_SECONDARY,
-        font=("Segoe UI", 10, "bold"),
-        justify="left",
-        wraplength=700,
+    as_frame = tk.Frame(left, bg=PANEL_BG)
+    as_frame.pack(fill="both", expand=True)
+
+    cols_asistencia = (
+        "Enrollment",
+        "Name",
+        "Date",
+        "Time",
+        "Status",
+        "Zone",
+        "EPP_Detected",
+        "Reason",
     )
-    msg_label.pack(anchor="w", padx=30, pady=(10, 0))
 
-    # LÓGICA
-    def calculate_attendance():
-        subject_name = tx.get().strip()
-        if subject_name == "":
-            t = "Por favor, ingrese el nombre del trabajador."
-            msg_label.config(text=t, fg=WARNING_COLOR)
-            text_to_speech(t)
-            return
+    tree_as = ttk.Treeview(
+        as_frame,
+        columns=cols_asistencia,
+        show="headings",
+        height=16,
+        style="Dark.Treeview",
+    )
 
-        df_all = load_all_attendance_frames()
-        if df_all is None or df_all.empty:
-            t = "No se encontraron registros de asistencia."
-            msg_label.config(text=t, fg=ERROR_COLOR)
-            text_to_speech(t)
-            return
+    for c in cols_asistencia:
+        tree_as.heading(c, text=c, anchor="w", style="Dark.Treeview.Heading")
+        if c in ("Enrollment", "Date", "Time", "Status"):
+            width = 80
+        elif c == "Zone":
+            width = 100
+        elif c == "EPP_Detected":
+            width = 150
+        else:
+            width = 150
+        tree_as.column(c, width=width, anchor="w")
 
-        # Convertir Date a datetime
-        df_all["Date"] = pd.to_datetime(df_all["Date"], errors="coerce")
+    scroll_y_as = ttk.Scrollbar(as_frame, orient="vertical", command=tree_as.yview)
+    tree_as.configure(yscrollcommand=scroll_y_as.set)
 
-        # Filtrar por nombre
-        mask = df_all["Name"].str.lower().str.contains(subject_name.lower(), na=False)
-        df = df_all[mask].copy()
+    tree_as.pack(side="left", fill="both", expand=True)
+    scroll_y_as.pack(side="right", fill="y")
 
-        if df.empty:
-            t = f"No se encontraron registros de asistencia para '{subject_name}'."
-            msg_label.config(text=t, fg=ERROR_COLOR)
-            text_to_speech(t)
-            return
+    # tags para colorear filas
+    tree_as.tag_configure("ok", foreground=ACCENT)
+    tree_as.tag_configure("forzado", foreground=WARNING)
+    tree_as.tag_configure("fallo", foreground=DANGER)
 
-        # Días laborables (días en los que hay registros de asistencia en general)
-        total_days = df_all["Date"].nunique()
+    # ---------- INTENTOS ----------
+    right = tk.Frame(split, bg=PRIMARY_BG)
+    right.pack(side="right", fill="both", expand=True, padx=(8, 0))
 
-        # Resumen por trabajador (dentro del filtro)
-        attendance_summary = (
-            df.groupby(["Enrollment", "Name"])["Date"]
-            .nunique()
-            .reset_index()
-            .rename(columns={"Date": "DiasPresentes"})
+    tk.Label(
+        right,
+        text="Intentos / rechazos",
+        bg=PRIMARY_BG,
+        fg=TEXT_PRIMARY,
+        font=("Segoe UI Semibold", 12),
+    ).pack(anchor="w", pady=(0, 4))
+
+    in_frame = tk.Frame(right, bg=PANEL_BG)
+    in_frame.pack(fill="both", expand=True)
+
+    cols_intentos = (
+        "Enrollment",
+        "Name",
+        "Date",
+        "Time",
+        "Status",
+        "Zone",
+        "EPP_Detected",
+        "Reason",
+    )
+
+    tree_in = ttk.Treeview(
+        in_frame,
+        columns=cols_intentos,
+        show="headings",
+        height=16,
+        style="Dark.Treeview",
+    )
+
+    for c in cols_intentos:
+        tree_in.heading(c, text=c, anchor="w", style="Dark.Treeview.Heading")
+        if c in ("Enrollment", "Date", "Time", "Status"):
+            width = 80
+        elif c == "Zone":
+            width = 100
+        elif c == "EPP_Detected":
+            width = 150
+        else:
+            width = 150
+        tree_in.column(c, width=width, anchor="w")
+
+    scroll_y_in = ttk.Scrollbar(in_frame, orient="vertical", command=tree_in.yview)
+    tree_in.configure(yscrollcommand=scroll_y_in.set)
+
+    tree_in.pack(side="left", fill="both", expand=True)
+    scroll_y_in.pack(side="right", fill="y")
+
+    tree_in.tag_configure("ok", foreground=ACCENT)
+    tree_in.tag_configure("forzado", foreground=WARNING)
+    tree_in.tag_configure("fallo", foreground=DANGER)
+
+    # -------------------------------------------------
+    # Lógica de filtros
+    # -------------------------------------------------
+    df_as_global = leer_asistencias()
+    df_in_global = leer_intentos()
+
+    def insertar_row_tree(tree, row, cols, es_intento=False):
+        """
+        Inserta una fila en el Treeview con un tag según el estado / razón.
+        """
+        status = (row.get("Status", "") or "").upper()
+        reason = (row.get("Reason", "") or "")
+
+        tag = ""
+        if status in ("ENTRADA", "SALIDA") and reason.strip() in ("", "OK"):
+            tag = "ok"
+        elif "FORZADO" in reason.upper() or status.startswith("REG_FORZADO"):
+            tag = "forzado"
+        elif status.startswith("NO_") or "FALTA" in reason.upper():
+            tag = "fallo"
+
+        values = [
+            row.get("Enrollment", ""),
+            row.get("Name", ""),
+            str(row.get("Date", ""))[:10],
+            row.get("Time", ""),
+            row.get("Status", ""),
+            row.get("Zone", ""),
+            row.get("EPP_Detected", ""),
+            row.get("Reason", ""),
+        ]
+        tree.insert("", "end", values=values, tags=(tag,))
+
+    def aplicar_filtros(voz=False):
+        nombre_f = entry_nombre.get().strip().lower()
+        desde_f = entry_desde.get().strip()
+        hasta_f = entry_hasta.get().strip()
+
+        df_as = df_as_global.copy()
+        df_in = df_in_global.copy()
+
+        # Filtro por nombre (contiene)
+        if nombre_f:
+            df_as = df_as[df_as["Name"].fillna("").str.lower().str.contains(nombre_f)]
+            df_in = df_in[df_in["Name"].fillna("").str.lower().str.contains(nombre_f)]
+
+        # Filtro por rango de fechas (las fechas vienen en formato 'YYYY-MM-DD')
+        if desde_f:
+            df_as = df_as[df_as["Date"] >= desde_f]
+            df_in = df_in[df_in["Date"] >= desde_f]
+        if hasta_f:
+            df_as = df_as[df_as["Date"] <= hasta_f]
+            df_in = df_in[df_in["Date"] <= hasta_f]
+
+        # Limpiar tablas
+        for item in tree_as.get_children():
+            tree_as.delete(item)
+        for item in tree_in.get_children():
+            tree_in.delete(item)
+
+        # Ordenar por fecha + hora descendente
+        if not df_as.empty:
+            df_as["Date"] = pd.to_datetime(df_as["Date"], errors="coerce")
+            df_as = df_as.sort_values(by=["Date", "Time"], ascending=False)
+
+        if not df_in.empty:
+            df_in["Date"] = pd.to_datetime(df_in["Date"], errors="coerce")
+            df_in = df_in.sort_values(by=["Date", "Time"], ascending=False)
+
+        # Rellenar asistencia
+        for _, row in df_as.iterrows():
+            insertar_row_tree(tree_as, row, cols_asistencia)
+
+        # Rellenar intentos
+        for _, row in df_in.iterrows():
+            insertar_row_tree(tree_in, row, cols_intentos, es_intento=True)
+
+        # actualizar resumen
+        summary_lbl.config(
+            text=f"Asistencias: {len(df_as)}   |   Intentos: {len(df_in)}"
         )
 
-        attendance_summary["TotalDias"] = total_days
-        attendance_summary["Asistencia%"] = (
-            attendance_summary["DiasPresentes"] / attendance_summary["TotalDias"] * 100
-        ).round(2)
+        # Mensaje por voz
+        if voz and text_to_speech:
+            if df_as.empty and df_in.empty:
+                text_to_speech("No hay registros que coincidan con el filtro.")
+            else:
+                msg = f"Se encontraron {len(df_as)} asistencias y {len(df_in)} intentos."
+                text_to_speech(msg)
 
-        # Unir el resumen a cada registro individual
-        df = df.merge(attendance_summary, on=["Enrollment", "Name"], how="left")
-        df["Asistencia%"] = df["Asistencia%"].fillna(0)
-        df["Asistencia"] = df["Asistencia%"].astype(str) + "%"
-        df.drop(columns=["Asistencia%"], inplace=True)
+    # primera carga (sin filtros, pero sin hablar)
+    aplicar_filtros(voz=False)
 
-        # Ordenar por fecha y hora
-        df.sort_values(by=["Date", "Time"], inplace=True)
+    win.mainloop()
 
-        # Mostrar tabla
-        t = (
-            f"Se encontraron {len(df)} registros para '{subject_name}'. "
-            "Se abrirá la vista detallada."
-        )
-        msg_label.config(text=t, fg=ACCENT)
-        text_to_speech(t)
-
-        show_csv_window(df, f"Asistencia detallada - {subject_name}")
-
-    # BOTONES
-    buttons_frame = tk.Frame(card, bg=SECONDARY_BG)
-    buttons_frame.pack(fill="x", padx=30, pady=(20, 25))
-
-    btn_ver = tk.Button(
-        buttons_frame,
-        text="📘 Ver asistencia",
-        command=calculate_attendance,
-        bg=ACCENT,
-        fg="black",
-        activebackground="#4ade80",
-        activeforeground="black",
-        font=("Segoe UI Semibold", 11),
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        padx=20,
-        pady=9,
-    )
-    btn_ver.pack(side="left")
-
-    btn_close = tk.Button(
-        buttons_frame,
-        text="Cerrar",
-        command=subject_win.destroy,
-        bg=SECONDARY_BG,
-        fg=TEXT_SECONDARY,
-        activebackground="#111827",
-        activeforeground=TEXT_PRIMARY,
-        font=("Segoe UI", 10),
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        padx=18,
-        pady=7,
-    )
-    btn_close.pack(side="right")
-
-    if is_standalone:
-        subject_win.mainloop()
-
-
-# ==============================
-# 2. VER ASISTENCIA GENERAL
-# ==============================
-
-def ver_asistencia_general(text_to_speech):
-    """
-    Muestra un RESUMEN GENERAL de asistencia:
-    - Días presentes
-    - Total de días con registros
-    - Porcentaje de asistencia
-    para cada trabajador.
-    """
-    df_all = load_all_attendance_frames()
-    if df_all is None or df_all.empty:
-        text_to_speech("No se encontraron registros de asistencia.")
-        return
-
-    df_all["Date"] = pd.to_datetime(df_all["Date"], errors="coerce")
-    df_all.sort_values(by=["Date", "Time"], inplace=True)
-
-    total_days = df_all["Date"].nunique()
-
-    summary = (
-        df_all.groupby(["Enrollment", "Name"])["Date"]
-        .nunique()
-        .reset_index()
-        .rename(columns={"Date": "DiasPresentes"})
-    )
-    summary["TotalDias"] = total_days
-    summary["Asistencia%"] = (
-        summary["DiasPresentes"] / summary["TotalDias"] * 100
-    ).round(2)
-    summary["Asistencia%"] = summary["Asistencia%"].astype(str) + "%"
-
-    # Ordenar por porcentaje y nombre
-    summary.sort_values(
-        by=["Asistencia%", "Name"], ascending=[False, True], inplace=True
-    )
-
-    text_to_speech("Mostrando resumen general de asistencia.")
-    show_csv_window(summary, "Resumen general de asistencia")
-
-
-# ==============================
-# 3. MENÚ DE OPCIONES
-# ==============================
 
 def menu_asistencia(text_to_speech):
-    """
-    Menú simple para elegir entre:
-    - Ver asistencia por trabajador
-    - Ver resumen general
-    """
-    menu_win, is_standalone = create_toplevel(
-        "Opciones de asistencia",
-        width=520,
-        height=320,
-    )
-    menu_win.resizable(0, 0)
-
-    container = tk.Frame(menu_win, bg=PRIMARY_BG)
-    container.pack(expand=True, fill="both", padx=30, pady=30)
-
-    tk.Label(
-        container,
-        text="Opciones de asistencia",
-        bg=PRIMARY_BG,
-        fg=TEXT_PRIMARY,
-        font=("Segoe UI Semibold", 20),
-    ).pack(anchor="w", pady=(0, 10))
-
-    tk.Label(
-        container,
-        text="Seleccione el tipo de vista que desea consultar:",
-        bg=PRIMARY_BG,
-        fg=TEXT_SECONDARY,
-        font=("Segoe UI", 10),
-    ).pack(anchor="w")
-
-    card = tk.Frame(container, bg=SECONDARY_BG)
-    card.pack(fill="both", expand=True, pady=(20, 0))
-
-    # Botones
-    btn1 = tk.Button(
-        card,
-        text="📘 Ver asistencia por trabajador",
-        command=lambda: [menu_win.destroy(), subjectchoose(text_to_speech)],
-        bg=PRIMARY_BG,
-        fg=TEXT_PRIMARY,
-        activebackground="#111827",
-        activeforeground=TEXT_PRIMARY,
-        font=("Segoe UI", 11),
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        padx=20,
-        pady=10,
-    )
-    btn1.pack(pady=(25, 10), padx=25, fill="x")
-
-    btn2 = tk.Button(
-        card,
-        text="📋 Ver resumen general",
-        command=lambda: [menu_win.destroy(), ver_asistencia_general(text_to_speech)],
-        bg=PRIMARY_BG,
-        fg=TEXT_PRIMARY,
-        activebackground="#111827",
-        activeforeground=TEXT_PRIMARY,
-        font=("Segoe UI", 11),
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        padx=20,
-        pady=10,
-    )
-    btn2.pack(pady=(0, 20), padx=25, fill="x")
-
-    # Cerrar
-    bottom = tk.Frame(container, bg=PRIMARY_BG)
-    bottom.pack(fill="x", pady=(10, 0))
-
-    tk.Button(
-        bottom,
-        text="Cerrar",
-        command=menu_win.destroy,
-        bg=PRIMARY_BG,
-        fg=TEXT_SECONDARY,
-        activebackground="#111827",
-        activeforeground=TEXT_PRIMARY,
-        font=("Segoe UI", 10),
-        bd=0,
-        relief="flat",
-        cursor="hand2",
-        padx=16,
-        pady=6,
-    ).pack(side="right")
-
-    if is_standalone:
-        menu_win.mainloop()
-
-
-# ==============================
-# PRUEBA DIRECTA (OPCIONAL)
-# ==============================
-
-if __name__ == "__main__":
-    # Pequeña función de prueba de TTS
-    def _tts(msg):
-        print("[TTS]", msg)
-
-    menu_asistencia(_tts)
+    subjectchoose(text_to_speech)
